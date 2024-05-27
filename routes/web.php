@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\MessengerController;
 
 /*
 |--------------------------------------------------------------------------
@@ -29,3 +30,7 @@ Route::middleware('auth')->group(function () {
 });
 
 require __DIR__.'/auth.php';
+
+Route::group(['middleware' => 'auth'], function() {
+    Route::get('messenger', [MessengerController::class, 'index'])->name('home');
+});

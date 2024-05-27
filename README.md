@@ -1,6 +1,3 @@
-Sure, I'll update the README to include the use of Bootstrap for styling, jQuery for interactivity, custom CSS, and the feature to delete own messages in private chats. Here's the revised README:
-
-```markdown
 # Msg -- A Lightweight Messaging Application
 
 ## Overview

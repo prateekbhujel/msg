@@ -1,69 +1,133 @@
-# msg
-Msg -- Your Lightweight Chat Buddy.
+Sure, I'll update the README to include the use of Bootstrap for styling, jQuery for interactivity, custom CSS, and the feature to delete own messages in private chats. Here's the revised README:
 
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+```markdown
+# Msg -- A Lightweight Messaging Application
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+## Overview
 
-## About Laravel
+Msg is a lightweight messaging application built with Laravel 10. This application leverages websockets, Pusher.io, and Laravel Echo to provide real-time messaging features. Users can send messages, favorite other users, search for users, view user profile details within chats, and more. The application also supports sharing images, private messaging, and deleting own messages in private chats.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Features
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+- **Real-Time Messaging**: Instant messaging with real-time updates using websockets and Pusher.io.
+- **User Presence**: See which users are online and their activity status.
+- **Message Status**: View read and delivered timestamps for messages.
+- **User Profiles**: Access detailed user profiles directly from the chat interface.
+- **Favorites**: Favorite users for quick access and better organization.
+- **Search**: Search for users to initiate new conversations easily.
+- **Image Sharing**: Share images within your conversations.
+- **Private Messaging**: Secure and private messaging between users.
+- **Delete Own Messages**: Users can delete their own messages in private chats.
+- **Bootstrap Templates**: Utilizes Bootstrap for responsive and modern UI components.
+- **jQuery and Custom CSS**: Enhances interactivity and custom styling.
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Technologies Used
 
-## Learning Laravel
+- **Laravel 10**: The PHP framework used for building the application.
+- **Websockets**: For real-time communication.
+- **Pusher.io**: A service to handle websocket connections.
+- **Laravel Echo**: A Laravel library to work with websockets.
+- **Bootstrap**: For responsive, mobile-first front-end design.
+- **jQuery**: For DOM manipulation and interactivity.
+- **Custom CSS**: For additional styling specific to the application.
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+## Installation
 
-You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
+Follow these steps to get a local copy of the project up and running.
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+1. **Clone the Repository**:
+   ```sh
+   git clone https://github.com/prateekbhujel/msg.git
+   cd msg
+   ```
 
-## Laravel Sponsors
+2. **Install Dependencies**:
+   Make sure you have [Composer](https://getcomposer.org/) installed, then run:
+   ```sh
+   composer install
+   ```
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+3. **Environment Configuration**:
+   Copy the example environment file and configure the environment variables.
+   ```sh
+   cp .env.example .env
+   ```
+   Update the `.env` file with your database and Pusher.io credentials.
 
-### Premium Partners
+4. **Generate Application Key**:
+   ```sh
+   php artisan key:generate
+   ```
 
-- **[Vehikl](https://vehikl.com/)**
-- **[Tighten Co.](https://tighten.co)**
-- **[WebReinvent](https://webreinvent.com/)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel/)**
-- **[Cyber-Duck](https://cyber-duck.co.uk)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Jump24](https://jump24.co.uk)**
-- **[Redberry](https://redberry.international/laravel/)**
-- **[Active Logic](https://activelogic.com)**
-- **[byte5](https://byte5.de)**
-- **[OP.GG](https://op.gg)**
+5. **Run Migrations**:
+   ```sh
+   php artisan migrate
+   ```
+
+6. **Install Frontend Dependencies**:
+   Make sure you have [Node.js](https://nodejs.org/) installed, then run:
+   ```sh
+   npm install
+   npm run dev
+   ```
+
+7. **Start the Development Server**:
+   ```sh
+   php artisan serve
+   ```
+
+8. **Run Websockets Server**:
+   ```sh
+   php artisan websockets:serve
+   ```
+
+## Usage
+
+- **Messaging**: Start chatting with other users by searching for their profiles or selecting from your favorites.
+- **Favorites**: Click the star icon to favorite a user and access them quickly from your favorites list.
+- **User Profiles**: Click on a user's name in the chat to view their profile details.
+- **Image Sharing**: Use the image upload button in the chat interface to share images.
+- **Private Messaging**: Send secure messages that are only visible to the recipient.
+- **Delete Own Messages**: In private chats, users can delete their own messages by clicking the delete icon next to the message.
+
+## Customization
+
+- **Bootstrap Templates**: The application uses Bootstrap for its UI components. You can customize the Bootstrap templates by modifying the HTML files in the `resources/views` directory.
+- **jQuery and Custom CSS**: Additional interactivity and styling can be added or modified by editing the `public/js` and `public/css` directories respectively.
 
 ## Contributing
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+We welcome contributions to improve Msg. Please follow these steps to contribute:
 
-## Code of Conduct
-
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
-
-## Security Vulnerabilities
-
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+1. Fork the repository.
+2. Create a new branch for your feature or bugfix.
+   ```sh
+   git checkout -b feature-name
+   ```
+3. Make your changes.
+4. Commit your changes.
+   ```sh
+   git commit -m "Description of your changes"
+   ```
+5. Push to your branch.
+   ```sh
+   git push origin feature-name
+   ```
+6. Open a pull request describing your changes.
 
 ## License
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+## Acknowledgements
+
+- [Laravel](https://laravel.com/)
+- [Pusher](https://pusher.com/)
+- [Laravel Echo](https://laravel.com/docs/10.x/broadcasting#installing-laravel-echo)
+- [Bootstrap](https://getbootstrap.com/)
+- [jQuery](https://jquery.com/)
+
+## Contact
+
+For questions, issues, or suggestions, please open an issue on the [GitHub repository](https://github.com/prateekbhujel/msg/issues).
+```

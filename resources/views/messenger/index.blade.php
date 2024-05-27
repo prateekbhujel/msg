@@ -5,8 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport"
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, target-densityDpi=device-dpi" />
-    <title>MSG</title>
-    <link rel="icon" type="image/png" href="images/favicon.png">
+    <title>{{ config('app.name') }}</title>
+    <link rel="icon" type="image/png" href="{{ asset('public/assets/images/icon.png') }}">
     <link rel="stylesheet" href="{{ asset('public/assets/css/all.min.css') }}">
     <link rel="stylesheet" href="{{ asset('public/assets/css/bootstrap.min.css') }}">
     <link rel="stylesheet" href="{{ asset('public/assets/css/slick.css') }}">
@@ -28,8 +28,8 @@
         <div class="wsus__user_list">
             <div class="wsus__user_list_header">
                 <h3>
-                    <span><img src="images/chat_list_icon.png" alt="Chat" class="img-fluid"></span>
-                    MSG
+                    <span><img src="{{ asset('public/assets/images/chat_list_icon.png') }}" alt="Chat" class="img-fluid"></span>
+                    {{ config('app.name') }}
                 </h3>
                 <span class="setting" data-bs-toggle="modal" data-bs-target="#exampleModal">
                     <i class="fas fa-user-cog"></i>

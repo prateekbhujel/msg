@@ -2,7 +2,7 @@
 
 ## Overview
 
-Msg is a lightweight messaging application built with Laravel 10. This application leverages websockets, Pusher.io, and Laravel Echo to provide real-time messaging features. Users can send messages, favorite other users, search for users, view user profile details within chats, and more. The application also supports sharing images, private messaging, and deleting own messages in private chats.
+Msg is a lightweight messaging application built with Laravel. This application leverages websockets, Pusher.io, and Laravel Echo to provide real-time messaging features. Users can send messages, favorite other users, search for users, view user profile details within chats, and more. The application also supports sharing images, private messaging, and deleting own messages in private chats.
 
 ## Features
 

@@ -18,6 +18,7 @@
             color: #fff;
             padding: 3rem 1rem;
             text-align: center;
+            position: relative;
         }
         .features {
             padding: 3rem 1rem;
@@ -61,15 +62,19 @@
             position: absolute;
             top: 20px;
             right: 20px;
+            display: flex;
+            gap: 10px;
         }
-        .auth-links a {
+        .auth-links a, .auth-links form {
             color: #fff;
             text-decoration: none;
-            margin-left: 10px;
             font-weight: bold;
         }
         .auth-links a:hover {
             color: #ccc;
+        }
+        .auth-links form {
+            margin: 0;
         }
     </style>
 </head>
@@ -81,7 +86,14 @@
             <div class="auth-links">
                 @if (Route::has('login'))
                     @auth
-                        <a href="{{ url('/dashboard') }}">Dashboard</a>
+                        <form method="POST" action="{{ route('logout') }}">
+                            @csrf
+                            <button type="submit" class="btn btn-link" style="color: #fff; text-decoration: none; font-weight: bold; padding: 0; border: none; background: none;">
+                                Logout
+                            </button>
+                        </form>
+                        <a href="{{ route('home') }}">Go to Messages</a>
+
                     @else
                         <a href="{{ route('login') }}">Log in</a>
 
@@ -129,7 +141,7 @@
 
     <footer>
         <div class="container">
-            <p>&copy; MSg {{ date('Y') }}. All rights reserved. Developed by Pratik Bhujel.</p>
+            <p>&copy; {{ config('app.name') }} {{ date('Y') }}. All rights reserved. Developed by Pratik Bhujel.</p>
         </div>
     </footer>
 

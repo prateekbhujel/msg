@@ -110,11 +110,7 @@ We welcome contributions to improve Msg. Please follow these steps to contribute
    ```sh
    git push origin feature-name
    ```
-6. Open a pull request describing your changes.
-
-## License
-
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+6. Open a pull request describing your change.
 
 ## Acknowledgements
 

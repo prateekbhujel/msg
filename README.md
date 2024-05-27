@@ -1,4 +1,4 @@
-# Msg -- A Lightweight Messaging Application
+# Msg - "Your Lightweight Chat Buddy."
 
 ## Overview
 
@@ -127,4 +127,3 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 ## Contact
 
 For questions, issues, or suggestions, please open an issue on the [GitHub repository](https://github.com/prateekbhujel/msg/issues).
-```

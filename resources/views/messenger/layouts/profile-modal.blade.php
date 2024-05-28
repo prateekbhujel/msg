@@ -27,7 +27,7 @@ aria-hidden="true">
                         <input type="password" name="password_confirmation" placeholder="Confirm Password">
                     </div>
                 </div>
-                <div class="modal-footer p-0 mt-10">
+                <div class="modal-footer p-0 mt-4">
                     <button type="button" class="btn btn-secondary cancel"
                         data-bs-dismiss="modal">Close</button>
                     <button type="submit" class="btn btn-primary save">Update</button>
@@ -55,6 +55,11 @@ aria-hidden="true">
                     },
                     error: function(xhr, status, error){
                         console.log(xhr);
+                        let errors = xhr.responseJSON.errors;
+
+                        $.each(errors, function(index, value) {
+                            notyf.error(value[0]);
+                        });
                     }
                 });
 

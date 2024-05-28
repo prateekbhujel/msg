@@ -1135,6 +1135,18 @@ button {
     --bs-spinner-border-width: 2px;
 }
 
+/** Custom Css **/
+.img-fluid.profile-image-preview{
+    height: 135px !important;
+    width: 135px !important;
+    object-fit: cover !important;
+}
+
+.profile-file{
+    height: 150px;
+    width: 150px;
+}
+
 /*================================
     Chatting Application End
 ================================*/

@@ -5,8 +5,8 @@ aria-hidden="true">
         <div class="modal-body">
             <form action="#">
 
-                <div class="file">
-                    <img src="{{ asset(auth()->user()->avatar) }}" alt="Upload" class="img-fluid">
+                <div class="file profile-file">
+                    <img src="{{ asset(auth()->user()->avatar) }}" alt="Upload" class="img-fluid profile-image-preview">
                     <label for="select_file"><i class="fal fa-camera-alt"></i></label>
                     <input id="select_file" type="file" hidden>
                 </div>
@@ -31,7 +31,7 @@ aria-hidden="true">
         <div class="modal-footer">
             <button type="button" class="btn btn-secondary cancel"
                 data-bs-dismiss="modal">Close</button>
-            <button type="button" class="btn btn-primary save">Save changes</button>
+            <button type="button" class="btn btn-primary save">Update</button>
         </div>
     </div>
 </div>

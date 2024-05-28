@@ -16,6 +16,8 @@
     <link rel="stylesheet" href="{{ asset('public/assets/css/spacing.css') }} ">
     <link rel="stylesheet" href="{{ asset('public/assets/css/style.css') }}">
     <link rel="stylesheet" href="{{ asset('public/assets/css/responsive.css') }}">
+    {{-- Scripts Vite --}}
+    @vite(['resources/css/app.css', 'resources/js/messenger.js'])
 </head>
 
 <body>

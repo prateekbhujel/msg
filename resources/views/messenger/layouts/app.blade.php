@@ -43,7 +43,7 @@
 
     <!--main/custom js-->
     <script src="{{ asset('public/assets/js/main.js') }}"></script>
-
+    @stack('scripts')
 </body>
 
 </html>

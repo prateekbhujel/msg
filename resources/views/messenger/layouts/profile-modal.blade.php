@@ -13,7 +13,7 @@ aria-hidden="true">
                 </div>
                 <p>Edit information</p>
                 <input type="text" name="name" placeholder="Name" value="{{ old('name', auth()->user()->name) }}">
-                <input type="text" name="user_name" placeholder="User Id" value="{{ old('user_name', auth()->user()->user_name) }}">
+                <input type="text" name="user_id" placeholder="User Id" value="{{ old('user_id', auth()->user()->user_id) }}">
                 <input type="email" name="email" placeholder="Email" value="{{ old('email', auth()->user()->email) }}">
                 <p>Change password</p>
                 <div class="row">
@@ -44,7 +44,20 @@ aria-hidden="true">
         $(document).ready(function(){
             $('.profile-form').on('submit', function(e){
                 e.preventDefault();
-                alert('working');
+                let formData = $(this).serialize();
+
+                $.ajax({
+                    method: 'POST',
+                    url: '{{ route("profile.update") }}',
+                    data: formData,
+                    success: function(data){
+
+                    },
+                    error: function(xhr, status, error){
+                        console.log(xhr);
+                    }
+                });
+
             });
         });
 

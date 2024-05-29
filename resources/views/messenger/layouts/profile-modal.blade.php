@@ -3,7 +3,7 @@ aria-hidden="true">
 <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
         <div class="modal-body">
-            <form action="#" class="profile-form" enctype="multipart/form-data">
+            <form action="#" class="profile-form" enctype="multipart/form-data" autocomplete="off">
                 @csrf
 
                 <div class="file profile-file">
@@ -13,7 +13,7 @@ aria-hidden="true">
                 </div>
                 <p>Edit information</p>
                 <input type="text" name="name" placeholder="Name" value="{{ old('name', auth()->user()->name) }}">
-                <input type="text" name="user_id" placeholder="User Id" value="{{ old('user_id', auth()->user()->user_id) }}">
+                <input type="text" name="user_id" placeholder="User Id" value="{{ old('user_id', auth()->user()->user_name) }}">
                 <input type="email" name="email" placeholder="Email" value="{{ old('email', auth()->user()->email) }}">
                 <p>Change password</p>
                 <div class="row">
@@ -45,6 +45,7 @@ aria-hidden="true">
             $('.profile-form').on('submit', function(e){
                 e.preventDefault();
                 let formData = new FormData(this);
+                let saveBtn = $('.save');
 
                 $.ajax({
                     method: 'POST',
@@ -52,6 +53,10 @@ aria-hidden="true">
                     data: formData,
                     processData: false,
                     contentType: false,
+                    beforeSend: function(){
+                        saveBtn.html(`Updating....  <i class="ml-4 fas fa-spinner fa-spin"></i>`);
+                        saveBtn.prop('disabled', true);
+                    },
                     success: function(data){
                         window.location.reload();
                     },
@@ -62,6 +67,11 @@ aria-hidden="true">
                         $.each(errors, function(index, value) {
                             notyf.error(value[0]);
                         });
+
+                        saveBtn.text('Update');
+                        saveBtn.prop('disabled', false);
+
+
                     }
                 });
 

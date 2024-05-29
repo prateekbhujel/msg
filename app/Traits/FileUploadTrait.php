@@ -4,7 +4,7 @@ namespace App\Traits;
 
 use Illuminate\Http\Request;
 
-trait FileUploadTrait 
+Trait FileUploadTrait 
 {
 
     /**
@@ -16,7 +16,7 @@ trait FileUploadTrait
      * @param string $path The path to upload the file to, relative to the public directory.
      * @return string|null The path of the uploaded file, or null if no file was uploaded.
      */
-    public function uploadFile(Request $request, string $inputName, ?string $oldPath = null, string $path = 'public/uploads')
+    public function uploadFile(Request $request, string $inputName, ?string $oldPath = null, string $path = '/uploads')
     {
         if ($request->hasFile($inputName)) {
             $file = $request->{$inputName};
@@ -25,7 +25,7 @@ trait FileUploadTrait
 
             $file->move(public_path($path), $fileName);
 
-            return $path . '/' . $fileName;
+            return 'public' . $path . '/' . $fileName;
         }
 
         return null;

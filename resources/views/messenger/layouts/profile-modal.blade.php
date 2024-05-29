@@ -44,14 +44,16 @@ aria-hidden="true">
         $(document).ready(function(){
             $('.profile-form').on('submit', function(e){
                 e.preventDefault();
-                let formData = $(this).serialize();
+                let formData = new FormData(this);
 
                 $.ajax({
                     method: 'POST',
                     url: '{{ route("profile.update") }}',
                     data: formData,
+                    processData: false,
+                    contentType: false,
                     success: function(data){
-
+                        window.location.reload();
                     },
                     error: function(xhr, status, error){
                         console.log(xhr);

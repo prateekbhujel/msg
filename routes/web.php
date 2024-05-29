@@ -35,4 +35,6 @@ require __DIR__.'/auth.php';
 Route::group(['middleware' => 'auth'], function() {
     Route::get('messenger', [MessengerController::class, 'index'])->name('home');
     Route::post('profile', [UserProfileController::class, 'update'])->name('profile.update');
+    //User Search Route
+    Route::get('messenger/search', [MessengerController::class, 'usersearch'])->name('messenger.search');
 });

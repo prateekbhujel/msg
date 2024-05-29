@@ -1,10 +1,9 @@
 
-
 /**
  * --------------------
  * Resuable Function
  * --------------------
- */
+*/
 function imagePreview(input, selector) 
 {
     if (input.files && input.files[0]) 
@@ -22,10 +21,30 @@ function imagePreview(input, selector)
 }
 
 /**
+ * ---------------------
+ * User Search Function
+ * ---------------------
+*/
+function searchUsers(query)
+{
+    $.ajax({
+        method: 'GET',
+        url: '/messenger/search',
+        data: { query: query },
+        success: function(data){
+
+        },
+        error: function(xhr, status, error){
+
+        }
+    });
+}
+
+/**
  * --------------------
  * On DOM Load
  * --------------------
- */
+*/
 $(document).ready(function()
 {
     

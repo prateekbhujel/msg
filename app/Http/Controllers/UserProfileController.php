@@ -24,7 +24,7 @@ class UserProfileController extends Controller
                 'string',
                 'min:6',
                 'max:100',
-                'regex:/^[a-z0-9._-]+$/', // Only lowercase letters, numbers, dots, hyphens, and underscores
+                'regex:/^[a-z0-9@._-]+$/', // Only lowercase letters, numbers, dots, hyphens, and underscores
                 'unique:users,user_name,' . auth()->user()->id
             ],
             'email' => [

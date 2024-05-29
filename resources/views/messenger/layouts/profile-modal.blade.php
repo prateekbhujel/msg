@@ -3,13 +3,13 @@ aria-hidden="true">
 <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
         <div class="modal-body">
-            <form action="#" class="profile-form">
+            <form action="#" class="profile-form" enctype="multipart/form-data">
                 @csrf
 
                 <div class="file profile-file">
                     <img src="{{ asset(auth()->user()->avatar) }}" alt="Upload" class="img-fluid profile-image-preview">
                     <label for="select_file"><i class="fal fa-camera-alt"></i></label>
-                    <input id="select_file" type="file" hidden>
+                    <input id="select_file" type="file" hidden name="avatar">
                 </div>
                 <p>Edit information</p>
                 <input type="text" name="name" placeholder="Name" value="{{ old('name', auth()->user()->name) }}">

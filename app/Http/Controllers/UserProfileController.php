@@ -23,8 +23,8 @@ class UserProfileController extends Controller
                 'required',
                 'string',
                 'min:6',
-                'max:20',
-                'regex:/^[a-z0-9.]+$/', // Only lowercase letters, numbers, and dots(.)
+                'max:100',
+                'regex:/^[a-z0-9._-]+$/', // Only lowercase letters, numbers, dots, hyphens, and underscores
                 'unique:users,user_name,' . auth()->user()->id
             ],
             'email' => [
@@ -35,7 +35,7 @@ class UserProfileController extends Controller
                 'unique:users,email,' . auth()->user()->id
             ],
         ], [
-            'user_id.regex' => 'The user id can only contain lowercase letters, numbers, and dots(.).'
+            'user_id.regex' => 'The user id can only contain letters, numbers, dots, hyphens, and underscores no spaces.'
         ]);
         
         $user = Auth::user();
@@ -56,7 +56,7 @@ class UserProfileController extends Controller
         if($avatarPath) $user->avatar = $avatarPath;
 
         $user->name = $request->name;
-        $user->user_name = $request->user_id;
+        $user->user_name = strtolower($request->user_id);
         $user->email = $request->email;
         $user->save();
 

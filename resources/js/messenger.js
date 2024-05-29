@@ -29,7 +29,7 @@ function searchUsers(query)
 {
     $.ajax({
         method: 'GET',
-        url: '/messenger/search',
+        url:  route('messenger.search'),
         data: { query: query },
         success: function(data){
 
@@ -53,4 +53,8 @@ $(document).ready(function()
         imagePreview(this, '.profile-image-preview');
     });
 
+    $('.user_search').on('keyup', function(){
+        let query = $(this).val();
+        searchUsers(query);
+    });
 });

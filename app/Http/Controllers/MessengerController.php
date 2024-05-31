@@ -33,8 +33,15 @@ class MessengerController extends Controller
                         ->orWhere('user_name', 'LIKE', "%{$input}%")
                         ->get();
 
-        return $records;
+       foreach($records as $record)
+       {
+            $getRecords .= view('messenger.components.search-item', compact('record'))->render();
+       }
 
+       return response()->json([
+            'records' => $getRecords,
+       ]);
+       
     }//End Method
 
 

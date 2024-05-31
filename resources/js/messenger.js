@@ -32,6 +32,8 @@ function searchUsers(query)
         url:  route('messenger.search'),
         data: { query: query },
         success: function(data){
+            
+            $('.user_search_list_result').html(data.records);
 
         },
         error: function(xhr, status, error){

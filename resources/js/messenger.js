@@ -1,7 +1,7 @@
 
 /**
  * --------------------
- * Resuable Function
+ * Resuable Function   |
  * --------------------
 */
 function imagePreview(input, selector) 
@@ -22,7 +22,7 @@ function imagePreview(input, selector)
 
 /**
  * ---------------------
- * User Search Function
+ * User Search Function |
  * ---------------------
 */
 function searchUsers(query)
@@ -42,9 +42,33 @@ function searchUsers(query)
     });
 }
 
+
+/**
+ * --------------------------------
+ * Debounces a function,           |
+ * ensuring that it is only        |
+ * called after a specified delay. |
+ * --------------------------------
+*/
+function debounce(callback, delay) 
+{
+    let timerId;
+
+    return function(...args)
+    {
+        clearTimeout(timerId);
+        
+        timerId = setTimeout(() => {
+            callback.apply(this, args);
+        }, delay);
+    }
+
+}
+
+
 /**
  * --------------------
- * On DOM Load
+ * On DOM Load        |
  * --------------------
 */
 $(document).ready(function()
@@ -55,8 +79,20 @@ $(document).ready(function()
         imagePreview(this, '.profile-image-preview');
     });
 
-    $('.user_search').on('keyup', function(){
+    //Search action on keyup
+    const debouncedSearch = debounce(function() {
+        const value = $('.user_search').val();
+        searchUsers(value);
+    }, 500);
+
+    $('.user_search').on('keyup', function(e)
+    {
+        e.preventDefault();
+
         let query = $(this).val();
-        searchUsers(query);
+        if(query.length > 0)
+        {
+            debouncedSearch();
+        }
     });
 });

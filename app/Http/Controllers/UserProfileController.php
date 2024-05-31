@@ -15,16 +15,15 @@ class UserProfileController extends Controller
      */
     public function update(Request $request)
     {
-        
         $request->validate([
             'avatar' => ['nullable', 'image', 'max:500'],
             'name' => ['required', 'string', 'max:50'],
             'user_id' => [
                 'required',
                 'string',
-                'min:6',
+                'min:7',
                 'max:100',
-                'regex:/^[a-z0-9@._-]+$/', // Only lowercase letters, numbers, dots, hyphens, and underscores
+                'regex:/^@[a-z0-9._-]+$/', // Only lowercase letters, numbers, dots, hyphens, and underscores and must have @ in the beginning
                 'unique:users,user_name,' . auth()->user()->id
             ],
             'email' => [
@@ -34,35 +33,43 @@ class UserProfileController extends Controller
                 'max:100',
                 'unique:users,email,' . auth()->user()->id
             ],
-        ], [
-            'user_id.regex' => 'The user id can only contain letters, numbers, dots, hyphens, and underscores no spaces.'
+        ],
+         [
+            'user_id.regex' => 'Invalid characters. Must start with @. [a,12,.,-,_]',
         ]);
         
         $user = Auth::user();
 
-        //Validating password and saving
-        if($request->filled('current_password')) 
-        {
+        // Validating password and saving
+        if ($request->filled('current_password')) {
             $request->validate([
                 'current_password' => ['required', 'current_password', 'min:8'],
                 'password' => ['required', 'string', 'min:8', 'confirmed']
-
             ]);
 
             $user->password = bcrypt($request->password);
         }
-        //Saving the rest of the fields
+
+        // Saving the rest of the fields
         $avatarPath = $this->uploadFile($request, 'avatar');
-        if($avatarPath) $user->avatar = $avatarPath;
+        if ($avatarPath) {
+            $user->avatar = $avatarPath;
+        }
 
         $user->name = $request->name;
-        $user->user_name = strtolower($request->user_id);
+        
+        // Remove any '@' characters from the input and ensure the username starts with '@'
+        $user_name = str_replace('@', '', $request->user_id);
+        if (substr($user_name, 0, 1) !== '@') {
+            $user_name = '@' . $user_name;
+        }
+        $user->user_name = strtolower($user_name);
+        
         $user->email = $request->email;
         $user->save();
 
-        notyf()->addSuccess('Updated Successfully.');;
+        notyf()->addSuccess('Updated Successfully.');
         return response()->json(['message' => 'Updated Successfully.'], 200);
-
-    } //End Method
-
+        
+    } // End Method
 }

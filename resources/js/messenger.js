@@ -25,18 +25,29 @@ function imagePreview(input, selector)
  * | User Search Function |
  * -----------------------
 */
+let searchPage = 1;
 function searchUsers(query)
 {
     $.ajax({
         method: 'GET',
         url:  route('messenger.search'),
-        data: { query: query },
-        success: function(data){
+        data: { query: query, page:searchPage },
+        success: function(data)
+        {
+            if(searchPage == 1)
+            {
+                $('.user_search_list_result').html(data.records);
+                
+            }else
+            {
+                $('.user_search_list_result').append(data.records);
+            }
             
-            $('.user_search_list_result').html(data.records);
+            searchPage += 1;
 
         },
-        error: function(xhr, status, error){
+        error: function(xhr, status, error)
+        {
 
         }
     });
@@ -121,9 +132,9 @@ $(document).ready(function()
 
     // Search pagination
     actionOnScroll(".user_search_list_result", function(){
-        let value = $('.user_search').val();
+        let value = $('.user_search').val(); 
         searchUsers(value);
-    });
+    }); 
 
 });
 

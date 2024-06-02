@@ -28,10 +28,11 @@ class MessengerController extends Controller
     {
         $getRecords = null;
         $input = $request['query'];
+
         $records = User::where('id', '!=', Auth::user()->id)
                         ->where('name', 'LIKE', "%{$input}%")
                         ->orWhere('user_name', 'LIKE', "%{$input}%")
-                        ->get();
+                        ->paginate(10);
 
        foreach($records as $record)
        {

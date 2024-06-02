@@ -1,8 +1,8 @@
 
 /**
- * --------------------
- * Resuable Function   |
- * --------------------
+ * ----------------------
+ * | Resuable Function   |
+ * ----------------------
 */
 function imagePreview(input, selector) 
 {
@@ -21,9 +21,9 @@ function imagePreview(input, selector)
 }
 
 /**
- * ---------------------
- * User Search Function |
- * ---------------------
+ * -----------------------
+ * | User Search Function |
+ * -----------------------
 */
 function searchUsers(query)
 {
@@ -42,13 +42,37 @@ function searchUsers(query)
     });
 }
 
+/**
+ * ---------------------------------------
+ * | Attaches a scroll event listener     |
+ * | to the specified selector and calls  |
+ * | the provided callback function when  |
+ * | the scroll reaches the top or bottom |
+ * | of the element.                      |
+ * ---------------------------------------
+*/
+function actionOnScroll(selector, callback, topScroll = false) 
+{
+    $(selector).on('scroll', function () 
+    {
+        let element = $(this).get(0);
+        const condition = topScroll ? element.scrollTop == 0 : element.scrollTop + element.clientHeight >= element.scrollHeight;
+
+        if (condition) 
+        {
+            callback();
+        }
+
+    });
+}
+
 
 /**
- * --------------------------------
- * Debounces a function,           |
- * ensuring that it is only        |
- * called after a specified delay. |
- * --------------------------------
+ * ----------------------------------
+ * | Debounces a function,           |
+ * | ensuring that it is only        |
+ * | called after a specified delay. |
+ * ----------------------------------
 */
 function debounce(callback, delay) 
 {
@@ -65,11 +89,10 @@ function debounce(callback, delay)
 
 }
 
-
 /**
- * --------------------
- * On DOM Load        |
- * --------------------
+ * ---------------------
+ * |    On DOM Load     |
+ * ---------------------
 */
 $(document).ready(function()
 {
@@ -85,9 +108,9 @@ $(document).ready(function()
         searchUsers(value);
     }, 500);
 
-    $('.user_search').on('keyup', function(e)
+    $('.user_search').on('keyup', function()
     {
-        e.preventDefault();
+        // e.preventDefault();
 
         let query = $(this).val();
         if(query.length > 0)
@@ -95,4 +118,13 @@ $(document).ready(function()
             debouncedSearch();
         }
     });
+
+    // Search pagination
+    actionOnScroll(".user_search_list_result", function(){
+        let value = $('.user_search').val();
+        searchUsers(value);
+    });
+
 });
+
+

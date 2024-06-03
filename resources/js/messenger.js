@@ -145,16 +145,18 @@ $(document).ready(function()
         imagePreview(this, '.profile-image-preview');
     });
 
-    //Search action on keyup
+    /**
+    * ---------------------------
+    *| Search on action on keyup |
+    * ---------------------------
+    */
     const debouncedSearch = debounce(function() {
         const value = $('.user_search').val();
         searchUsers(value);
     }, 500);
 
-    $('.user_search').on('keyup', function()
-    {
-        // e.preventDefault();
-
+    $('.user_search').on('keyup', function(e) {
+        e.preventDefault();
         let query = $(this).val();
         if(query.length > 0)
         {
@@ -162,12 +164,29 @@ $(document).ready(function()
         }
     });
 
-    // Search pagination
-    actionOnScroll(".user_search_list_result", function(){
+    /**
+    * -----------------------------------
+    *| Search Pagination on Scroll Event |
+    * -----------------------------------
+    */
+    actionOnScroll(".user_search_list_result", function() {
         let value = $('.user_search').val(); 
         searchUsers(value);
-    }); 
 
+    });
+
+    /**
+     * --------------------------------------
+     *| Click action for messenger List item |
+     * --------------------------------------
+    */
+    $("body").on('click', '.messenger-list-item', function(){
+        const dataId = $(this).attr('data-id');
+
+        
+    });j
 });
+
+
 
 

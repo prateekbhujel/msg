@@ -67,4 +67,11 @@ class MessengerController extends Controller
         ]);
 
     } //End Method
+
+
+    public function sendMessage(Request $request)
+    {
+        dd($request->all());
+
+    }//End Method
 }

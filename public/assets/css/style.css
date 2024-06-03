@@ -801,6 +801,12 @@ button {
     right: 0;
 }
 
+.wsus__single_chat.chat_right {
+    text-align: right;
+    left: auto;
+    right: 0;
+}
+
 .wsus__single_chat.chat_right .time::after {
     position: absolute;
     content: "\f00c";

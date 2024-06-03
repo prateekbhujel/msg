@@ -8,7 +8,9 @@
 var temporaryMsgId = 0;
 
 const messageForm = $(".message-form"),
-    messageInput = $(".message-input");
+    messageInput = $(".message-input"),
+    messageBoxContainer = $(".wsus__chat_area_body"),
+    csrf_token = $("meta[name=csrf-token]").attr("content");
 
 const getMessengerId = () => $("meta[name=id]").attr("content");
 const setMessengerId = (id) => $("meta[name=id]").attr("content", id);
@@ -51,12 +53,21 @@ function sendMessage()
     
     if(inputValue.length > 0)
     {
+        const formData = new FormData(messageForm[0]);
+        formData.append("id", getMessengerId());
+        formData.append("temp_id", tempId);
+        formData.append("_token", csrf_token);
+
         $.ajax({
-            method: 'POST',
-            url: '',
-            data: '',
+            method: "POST",
+            url: route('messenger.send-message'),
+            data: formData,
+            dataType: "JSON",
+            processData: false,
+            contentType: false,
             beforeSend: function(){
-              
+                //add temp message on dom
+                messageBoxContainer.append(sendTempMessageCard(inputValue, tempId));
             },
             success: function(data){
     
@@ -65,7 +76,27 @@ function sendMessage()
                
             }
         });
+
     }
+
+}//End Method
+
+/**
+ *  ---------------------------------------------
+ * | Generates an HTML string representing a     |
+ * | temporary message card for a chat interface.|
+ *  ---------------------------------------------
+*/
+function sendTempMessageCard(message, tempId) {
+    return `
+                <div class="wsus__single_chat_area" data-id="${tempId}">
+                    <div class="wsus__single_chat chat_right">
+                        <p class="messages">${message}</p>
+                        <span class="far fa-clock"> Now</span>
+                        <a class="action" href="#"><i class="fas fa-trash"></i></a>
+                    </div>
+                </div>
+        `;
 
 }//End Method
 

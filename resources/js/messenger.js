@@ -6,6 +6,10 @@
  *  ------------------
 */
 var temporaryMsgId = 0;
+
+const messageForm = $(".message-form"),
+    messageInput = $(".message-input");
+
 const getMessengerId = () => $("meta[name=id]").attr("content");
 const setMessengerId = (id) => $("meta[name=id]").attr("content", id);
 
@@ -39,6 +43,32 @@ function imagePreview(input, selector)
     }
 
 }//End Method
+function sendMessage()
+{
+    temporaryMsgId += 1;
+    let tempId = `temp_${temporaryMsgId}`; //temp_1, temp_2 ....
+    const inputValue = messageInput.val();
+    
+    if(inputValue.length > 0)
+    {
+        $.ajax({
+            method: 'POST',
+            url: '',
+            data: '',
+            beforeSend: function(){
+              
+            },
+            success: function(data){
+    
+            },
+            error: function(xhr, status, error){
+               
+            }
+        });
+    }
+
+}//End Method
+
 
 /**
  *  ----------------------
@@ -238,11 +268,19 @@ $(document).ready(function()
      *  --------------------------------------
     */
     $("body").on('click', '.messenger-list-item', function(){
-        
         const dataId = $(this).attr('data-id');
         setMessengerId(dataId);
         Idinfo(dataId);
+    });
 
+    /**
+     *  --------------
+     * | Send Message |
+     *  --------------
+    */
+    messageForm.on('submit', function(e){
+        e.preventDefault();
+        sendMessage(); 
     });
 
 });//End Method

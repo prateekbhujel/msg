@@ -28,6 +28,7 @@ function imagePreview(input, selector)
 let searchPage = 1;
 let noMoreDataSearch = false;
 let searchTempVal = "";
+let setSearchLoading = false;
 function searchUsers(query)
 {
     if(query != searchTempVal)
@@ -38,14 +39,29 @@ function searchUsers(query)
 
     searchTempVal = query;
 
-    if(!noMoreDataSearch)
+    if(!setSearchLoading && !noMoreDataSearch)
     {
         $.ajax({
             method: 'GET',
             url:  route('messenger.search'),
             data: { query: query, page:searchPage },
+            beforeSend: function(){
+                setSearchLoading = true;
+                let loader = `
+                                <div class="text-center mt-2 search-loader">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                </div>
+                            `;
+
+                $('.user_search_list_result').append(loader);
+            },
             success: function(data)
             {
+                setSearchLoading = false;
+                $('.user_search_list_result').find('.search-loader').remove();
+
                 if(searchPage < 2)
                 {
                     $('.user_search_list_result').html(data.records);
@@ -62,7 +78,8 @@ function searchUsers(query)
             },
             error: function(xhr, status, error)
             {
-                // console.log(xhr.responseJSON.message);
+                setSearchLoading = false;
+                $('.user_search_list_result').find('.search-loader').remove();
             }
         });
     }

@@ -39,6 +39,10 @@ class MessengerController extends Controller
             ->orWhere('user_name', 'LIKE', "%{$input}%")
             ->paginate(10);
 
+        if($records->total() < 1)
+        {
+            $getRecords = '<p class="text-center mt-3"> No results found. </p>';
+        }
         foreach ($records as $record) {
             $getRecords .= view('messenger.components.search-item', compact('record'))->render();
         }

@@ -23,27 +23,31 @@ class MessengerController extends Controller
     } //End Method
 
 
-    //Search User Profiles based on input(user id and name) from the user model and rejected the logged in user id.
+    /**
+     * Search for user profiles based on input (user ID and name) from the user model, excluding the logged-in user.
+     *
+     * @param \Illuminate\Http\Request $request
+     * @return \Illuminate\Http\JsonResponse
+    */
     public function search(Request $request)
     {
         $getRecords = null;
         $input = $request['query'];
 
         $records = User::where('id', '!=', Auth::user()->id)
-                        ->where('name', 'LIKE', "%{$input}%")
-                        ->orWhere('user_name', 'LIKE', "%{$input}%")
-                        ->paginate(10);
+            ->where('name', 'LIKE', "%{$input}%")
+            ->orWhere('user_name', 'LIKE', "%{$input}%")
+            ->paginate(10);
 
-       foreach($records as $record)
-       {
+        foreach ($records as $record) {
             $getRecords .= view('messenger.components.search-item', compact('record'))->render();
-       }
+        }
 
-       return response()->json([
-            'records' => $getRecords,
-       ]);
-       
-    }//End Method
+        return response()->json([
+            'records'   => $getRecords,
+            'last_page' => $records->lastPage(),
+        ]);
+    } //End Method
 
 
 }

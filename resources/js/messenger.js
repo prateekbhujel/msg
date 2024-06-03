@@ -26,31 +26,46 @@ function imagePreview(input, selector)
  * -----------------------
 */
 let searchPage = 1;
+let noMoreDataSearch = false;
+let searchTempVal = "";
 function searchUsers(query)
 {
-    $.ajax({
-        method: 'GET',
-        url:  route('messenger.search'),
-        data: { query: query, page:searchPage },
-        success: function(data)
-        {
-            if(searchPage == 1)
+    if(query != searchTempVal)
+    {   
+        searchPage = 1;
+        noMoreDataSearch = false;
+    }
+
+    searchTempVal = query;
+
+    if(!noMoreDataSearch)
+    {
+        $.ajax({
+            method: 'GET',
+            url:  route('messenger.search'),
+            data: { query: query, page:searchPage },
+            success: function(data)
             {
-                $('.user_search_list_result').html(data.records);
+                if(searchPage < 2)
+                {
+                    $('.user_search_list_result').html(data.records);
+                    
+                }else
+                {
+                    $('.user_search_list_result').append(data.records);
+                }
                 
-            }else
+                noMoreDataSearch = searchPage >= data?.last_page;
+
+                if(!noMoreDataSearch) searchPage += 1;
+    
+            },
+            error: function(xhr, status, error)
             {
-                $('.user_search_list_result').append(data.records);
+                // console.log(xhr.responseJSON.message);
             }
-            
-            searchPage += 1;
-
-        },
-        error: function(xhr, status, error)
-        {
-
-        }
-    });
+        });
+    }
 }
 
 /**

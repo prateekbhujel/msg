@@ -1,4 +1,14 @@
 
+
+/**
+ *  ------------------
+ * | Global Variables |
+ *  ------------------
+*/
+var temporaryMsgId = 0;
+const getMessengerId = () => $("meta[name=id]").attr("content");
+const setMessengerId = (id) => $("meta[name=id]").attr("content", id);
+
 /**
  *  ---------------------
  * | Resuable Function   |
@@ -230,7 +240,7 @@ $(document).ready(function()
     $("body").on('click', '.messenger-list-item', function(){
         
         const dataId = $(this).attr('data-id');
-
+        setMessengerId(dataId);
         Idinfo(dataId);
 
     });

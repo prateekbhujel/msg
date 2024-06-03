@@ -1,9 +1,19 @@
 
 /**
- * ----------------------
+ *  ---------------------
  * | Resuable Function   |
- * ----------------------
+ *  ---------------------
 */
+function enableChatBoxLoader()
+{
+    $(".wsus__message_paceholder").removeClass('d-none');
+
+}//End Method
+function disableChatBoxLoader()
+{
+    $(".wsus__message_paceholder").addClass('d-none');
+
+}//End Method
 function imagePreview(input, selector) 
 {
     if (input.files && input.files[0]) 
@@ -21,9 +31,9 @@ function imagePreview(input, selector)
 }//End Method
 
 /**
- * -----------------------
+ *  ----------------------
  * | User Search Function |
- * -----------------------
+ *  ----------------------
 */
 let searchPage = 1;
 let noMoreDataSearch = false;
@@ -86,13 +96,13 @@ function searchUsers(query)
 }//End Method
 
 /**
- * ---------------------------------------
+ *  --------------------------------------
  * | Attaches a scroll event listener     |
  * | to the specified selector and calls  |
  * | the provided callback function when  |
  * | the scroll reaches the top or bottom |
  * | of the element.                      |
- * ---------------------------------------
+ *  --------------------------------------
 */
 function actionOnScroll(selector, callback, topScroll = false) 
 {
@@ -111,11 +121,11 @@ function actionOnScroll(selector, callback, topScroll = false)
 }//End Method
 
 /**
- * ----------------------------------
+ *  ---------------------------------
  * | Debounces a function,           |
  * | ensuring that it is only        |
  * | called after a specified delay. |
- * ----------------------------------
+ *  ---------------------------------
 */
 function debounce(callback, delay) 
 {
@@ -133,10 +143,10 @@ function debounce(callback, delay)
 }//End Method
 
 /**
- * ---------------------------------
- *| Fetch Id data of the userr and  |
- *| append it to the DOM.           |
- * ---------------------------------
+ *  ---------------------------------
+ * | Fetch Id data of the userr and  |
+ * | append it to the DOM.           |
+ *  ---------------------------------
 */
  function Idinfo(id)
  {
@@ -144,6 +154,10 @@ function debounce(callback, delay)
         method: 'GET',
         url: route('messenger.id-info'),
         data: {id: id},
+        beforeSend: function(){
+            NProgress.start();
+            enableChatBoxLoader();
+        },
         success: function(data){
             $(".messenger-header").find("img").attr("src", data.fetch.avatar);
             $(".messenger-header").find("h4").text(data.fetch.name);
@@ -151,6 +165,9 @@ function debounce(callback, delay)
             $(".messenger-info-view .user_photo").find("img").attr("src", data.fetch.avatar);
             $(".messenger-info-view").find(".user_name").text(data.fetch.name);
             $(".messenger-info-view").find(".user_unique_name").text(data.fetch.user_name);
+            
+            NProgress.done();
+            disableChatBoxLoader();
 
         },
         error: function(xhr, status, error){
@@ -163,9 +180,9 @@ function debounce(callback, delay)
 
 
 /**
- * ---------------------
- * |    On DOM Load     |
- * ---------------------
+ *  ---------------
+ * | On DOM Load   |
+ *  ---------------
 */
 $(document).ready(function()
 {
@@ -176,9 +193,9 @@ $(document).ready(function()
     });
 
     /**
-    * ---------------------------
-    *| Search on action on keyup |
-    * ---------------------------
+    *  ---------------------------
+    * | Search on action on keyup | 
+    *  --------------------------
     */
     const debouncedSearch = debounce(function() {
         const value = $('.user_search').val();
@@ -195,9 +212,9 @@ $(document).ready(function()
     });
 
     /**
-    * -----------------------------------
-    *| Search Pagination on Scroll Event |
-    * -----------------------------------
+    *  ----------------------------------- 
+    * | Search Pagination on Scroll Event |
+    *  ----------------------------------- 
     */
     actionOnScroll(".user_search_list_result", function() {
         let value = $('.user_search').val(); 
@@ -206,9 +223,9 @@ $(document).ready(function()
     });
 
     /**
-     * --------------------------------------
-     *| Click action for messenger List item |
-     * --------------------------------------
+     *  --------------------------------------
+     * | Click action for messenger List item |
+     *  --------------------------------------
     */
     $("body").on('click', '.messenger-list-item', function(){
         

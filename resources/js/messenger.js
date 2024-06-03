@@ -18,7 +18,7 @@ function imagePreview(input, selector)
         render.readAsDataURL(input.files[0]);
     }
 
-}
+}//End Method
 
 /**
  * -----------------------
@@ -83,7 +83,7 @@ function searchUsers(query)
             }
         });
     }
-}
+}//End Method
 
 /**
  * ---------------------------------------
@@ -107,8 +107,8 @@ function actionOnScroll(selector, callback, topScroll = false)
         }
 
     });
-}
 
+}//End Method
 
 /**
  * ----------------------------------
@@ -130,7 +130,37 @@ function debounce(callback, delay)
         }, delay);
     }
 
-}
+}//End Method
+
+/**
+ * ---------------------------------
+ *| Fetch Id data of the userr and  |
+ *| append it to the DOM.           |
+ * ---------------------------------
+*/
+ function Idinfo(id)
+ {
+    $.ajax({
+        method: 'GET',
+        url: route('messenger.id-info'),
+        data: {id: id},
+        success: function(data){
+            $(".messenger-header").find("img").attr("src", data.fetch.avatar);
+            $(".messenger-header").find("h4").text(data.fetch.name);
+            
+            $(".messenger-info-view .user_photo").find("img").attr("src", data.fetch.avatar);
+            $(".messenger-info-view").find(".user_name").text(data.fetch.name);
+            $(".messenger-info-view").find(".user_unique_name").text(data.fetch.user_name);
+
+        },
+        error: function(xhr, status, error){
+
+        }
+    });
+
+ }//End Method
+
+
 
 /**
  * ---------------------
@@ -181,11 +211,14 @@ $(document).ready(function()
      * --------------------------------------
     */
     $("body").on('click', '.messenger-list-item', function(){
+        
         const dataId = $(this).attr('data-id');
 
-        
-    });j
-});
+        Idinfo(dataId);
+
+    });
+
+});//End Method
 
 
 

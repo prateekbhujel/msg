@@ -53,5 +53,18 @@ class MessengerController extends Controller
         ]);
     } //End Method
 
+    /**
+     * Fetch information about the provided request ID.
+     *
+     * @param \Illuminate\Http\Request $request
+     * @return void
+    */
+    public function fetchIdInfo(Request $request)
+    {
+        $fetch = User::where('id', $request['id'])->first();
+        return response()->json([
+            'fetch' => $fetch,
+        ]);
 
+    } //End Method
 }

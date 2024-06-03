@@ -10,7 +10,7 @@
             <div class="wsus__message_paceholder d-none"></div>
 
             <div class="wsus__chat_area_header">
-                <div class="header_left">
+                <div class="header_left messenger-header">
                     <span class="back_to_list">
                         <i class="fas fa-arrow-left"></i>
                     </span>

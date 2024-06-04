@@ -48,14 +48,14 @@ function imagePreview(input, selector)
 function sendMessage()
 {
     temporaryMsgId += 1;
-    let tempId = `temp_${temporaryMsgId}`; //temp_1, temp_2 ....
+    let tempID = `temp_${temporaryMsgId}`; //temp_1, temp_2 ....
     const inputValue = messageInput.val();
     
     if(inputValue.length > 0)
     {
         const formData = new FormData(messageForm[0]);
         formData.append("id", getMessengerId());
-        formData.append("temp_id", tempId);
+        formData.append("temporaryMsgId", tempID);
         formData.append("_token", csrf_token);
 
         $.ajax({
@@ -67,7 +67,9 @@ function sendMessage()
             contentType: false,
             beforeSend: function(){
                 //add temp message on dom
-                messageBoxContainer.append(sendTempMessageCard(inputValue, tempId));
+                messageBoxContainer.append(sendTempMessageCard(inputValue, tempID));
+                messageForm.trigger("reset");
+                $(".emojionearea-editor").text("");
             },
             success: function(data){
     
@@ -92,7 +94,7 @@ function sendTempMessageCard(message, tempId) {
                 <div class="wsus__single_chat_area" data-id="${tempId}">
                     <div class="wsus__single_chat chat_right">
                         <p class="messages">${message}</p>
-                        <span class="far fa-clock"> Now</span>
+                        <span class="clock"><i class="fas fa-clock"></i> 5h ago</span>
                         <a class="action" href="#"><i class="fas fa-trash"></i></a>
                     </div>
                 </div>

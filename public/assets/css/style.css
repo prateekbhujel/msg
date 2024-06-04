@@ -79,6 +79,7 @@ button {
     --colorBlack: #121212;
     --colorWhite: #ffffff;
     --colorLightBg: #ecf5ff;
+    --customColor: #d6d6d6;
     --bodyFont: "Lato", sans-serif;
 }
 
@@ -737,13 +738,13 @@ button {
 }
 
 .wsus__single_chat .messages {
-    background: var(--colorPrimary);
+    background: var(--customColor);
     display: inline-block;
     padding: 5px 20px;
     border-radius: 50px;
     font-size: 16px;
     font-weight: 400;
-    color: var(--colorWhite);
+    color: var(--colorBlack);
 }
 
 .wsus__single_chat .time {
@@ -788,6 +789,11 @@ button {
     padding-right: 0;
     padding-left: 30px;
     align-items: end;
+}
+
+.wsus__single_chat.chat_right .messages {
+    background: var(--colorPrimary);
+    color: var(--colorWhite);
 }
 
 .wsus__single_chat.chat_right .action {
@@ -1139,6 +1145,29 @@ button {
 
 .spinner-border {
     --bs-spinner-border-width: 2px;
+}
+
+.wsus__single_chat .time,
+.wsus__single_chat .clock {
+    display: block;
+    font-size: 14px;
+    color: var(--paraColor);
+    font-weight: 400;
+    position: absolute;
+    bottom: -20px;
+    left: 0;
+    text-align: left;
+}
+
+.wsus__single_chat.chat_right .time,
+.wsus__single_chat.chat_right .clock {
+    text-align: right;
+    left: auto;
+    right: 0;
+}
+
+.wsus__single_chat.chat_right .clock i {
+    font-size: 11px;
 }
 
 /** Custom Css **/

@@ -102,9 +102,10 @@ function sendTempMessageCard(message, tempId) {
                         <a class="action" href="#"><i class="fas fa-trash"></i></a>
                     </div>
                 </div>
-        `;
+            `;
 
 }//End Method
+
 
 
 /**

@@ -1,7 +1,8 @@
+
 <div class="wsus__single_chat_area">
-    <div class="wsus__single_chat">
+    <div class="wsus__single_chat chat_right">
         <p class="messages">{{ $message->body }}</p>
-        <span class="time"> 5h ago</span>
+        <span class="time"> {{ $message->created_at->diffForHumans() }}</span>
         <a class="action" href="#"><i class="fas fa-trash"></i></a>
     </div>
 </div>

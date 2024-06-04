@@ -72,7 +72,11 @@ function sendMessage()
                 $(".emojionearea-editor").text("");
             },
             success: function(data){
-    
+                const tempMsgCardElement = messageBoxContainer.find(`.message-card[data-id=${data.tempID}]`);
+                
+                tempMsgCardElement.before(data.message);
+                tempMsgCardElement.remove();
+
             },
             error: function(xhr, status, error){
                
@@ -91,10 +95,10 @@ function sendMessage()
 */
 function sendTempMessageCard(message, tempId) {
     return `
-                <div class="wsus__single_chat_area" data-id="${tempId}">
+                <div class="wsus__single_chat_area message-card" data-id="${tempId}">
                     <div class="wsus__single_chat chat_right">
                         <p class="messages">${message}</p>
-                        <span class="clock"><i class="fas fa-clock"></i> 5h ago</span>
+                        <span class="clock"><i class="fas fa-clock"></i> sending</span>
                         <a class="action" href="#"><i class="fas fa-trash"></i></a>
                     </div>
                 </div>

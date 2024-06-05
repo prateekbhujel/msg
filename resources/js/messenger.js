@@ -338,9 +338,11 @@ $(document).ready(function()
      * | Send Attachment From Message |
      *  -------------------------------
     */
-    $(".attachment-input").change(function() {
+    $(".attachment-input").change(function() 
+    {
         imagePreview(this, '.attachment-preview');
         $(".attachment-block").removeClass('d-none');
+        
     });
 
     /**
@@ -349,8 +351,10 @@ $(document).ready(function()
      * | resets the form.                |
      *  ---------------------------------
     */
-    $(".cancel-attachment").click(function() {
+    $(".cancel-attachment").click(function() 
+    {
         messageFormReset();
+
     });
 
 });//End Method

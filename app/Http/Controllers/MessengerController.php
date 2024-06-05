@@ -84,16 +84,16 @@ class MessengerController extends Controller
         ]);
 
         // Save message to database
-        $message            = new Message();
-        $message->from_id   = Auth::user()->id;
-        $message->to_id     = $request->id;
-        $message->body      = $request->message;
-        $message->save();
+        // $message            = new Message();
+        // $message->from_id   = Auth::user()->id;
+        // $message->to_id     = $request->id;
+        // $message->body      = $request->message;
+        // $message->save();
 
-        return response()->json([
-            'message'   => $this->messageCard($message),
-            'tempID'    => $request->temporaryMsgId,
-        ]);
+        // return response()->json([
+        //     'message'   => $this->messageCard($message),
+        //     'tempID'    => $request->temporaryMsgId,
+        // ]);
 
     } //End Method
 

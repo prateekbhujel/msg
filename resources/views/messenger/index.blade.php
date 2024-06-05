@@ -68,7 +68,7 @@
                     </div>
                 </div>
                 
-                <div class="wsus__single_chat_area">
+                {{-- <div class="wsus__single_chat_area">
                     <div class="wsus__single_chat chat_right">
                         <div class="pre_loader">
                             <div class="spinner-border text-light" role="status">
@@ -81,7 +81,8 @@
                         <span class="time"> 5h ago</span>
                         <a class="action" href="#"><i class="fas fa-trash"></i></a>
                     </div>
-                </div>
+                </div> --}}
+                
 
             </div>
 

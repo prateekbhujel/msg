@@ -49,9 +49,10 @@ function sendMessage()
 {
     temporaryMsgId += 1;
     let tempID = `temp_${temporaryMsgId}`; //temp_1, temp_2 ....
+    let hasAttachment = !!$(".attachment-input").val();
     const inputValue = messageInput.val();
     
-    if(inputValue.length > 0)
+    if(inputValue.trim().length > 0 || hasAttachment)
     {
         const formData = new FormData(messageForm[0]);
         formData.append("id", getMessengerId());
@@ -67,9 +68,17 @@ function sendMessage()
             contentType: false,
             beforeSend: function(){
                 //add temp message on dom
-                messageBoxContainer.append(sendTempMessageCard(inputValue, tempID));
+                if(hasAttachment)
+                {
+                    messageBoxContainer.append(sendTempMessageCard(inputValue, tempID, true));    
+                }else
+                {
+                    messageBoxContainer.append(sendTempMessageCard(inputValue, tempID));
+                }
+
                 messageForm.trigger("reset");
                 $(".emojionearea-editor").text("");
+
             },
             success: function(data){
                 const tempMsgCardElement = messageBoxContainer.find(`.message-card[data-id=${data.tempID}]`);
@@ -93,16 +102,39 @@ function sendMessage()
  * | temporary message card for a chat interface.|
  *  ---------------------------------------------
 */
-function sendTempMessageCard(message, tempId) {
-    return `
-                <div class="wsus__single_chat_area message-card" data-id="${tempId}">
-                    <div class="wsus__single_chat chat_right">
-                        <p class="messages">${message}</p>
-                        <span class="clock"><i class="fas fa-clock"></i> sending</span>
-                        <a class="action" href="#"><i class="fas fa-trash"></i></a>
+function sendTempMessageCard(message, tempId, attachemnt = false) 
+{
+    if(attachemnt)
+    {
+        return `
+                    <div class="wsus__single_chat_area message-card" data-id="${tempId}">
+                        <div class="wsus__single_chat chat_right">
+                            <div class="pre_loader">
+                                <div class="spinner-border text-light" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                            
+                            ${message.trim().length > 0 ? `<p class="messages">${message}</p>` : ''}
+
+                            <span class="clock"><i class="fas fa-clock"></i> sending</span>
+                            <a class="action" href="#"><i class="fas fa-trash"></i></a>
+                        </div>
                     </div>
-                </div>
-            `;
+                `;
+
+    }else
+    {
+        return `
+                    <div class="wsus__single_chat_area message-card" data-id="${tempId}">
+                        <div class="wsus__single_chat chat_right">
+                            <p class="messages">${message}</p>
+                            <span class="clock"><i class="fas fa-clock"></i> sending</span>
+                            <a class="action" href="#"><i class="fas fa-trash"></i></a>
+                        </div>
+                    </div>
+                `;
+    }
 
 }//End Method
 
@@ -342,7 +374,7 @@ $(document).ready(function()
     {
         imagePreview(this, '.attachment-preview');
         $(".attachment-block").removeClass('d-none');
-        
+
     });
 
     /**

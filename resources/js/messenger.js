@@ -106,6 +106,18 @@ function sendTempMessageCard(message, tempId) {
 
 }//End Method
 
+/**
+ *  -------------------------------------
+ * | Resets the message from dom or Form |
+ *  -------------------------------------
+*/
+function messageFormReset()
+{
+    $(".attachment-block").addClass("d-none");
+    $(".emojionearea-editor").text(""); 
+    messageForm.trigger("reset");
+
+}//End Method
 
 
 /**
@@ -319,6 +331,26 @@ $(document).ready(function()
     messageForm.on('submit', function(e){
         e.preventDefault();
         sendMessage(); 
+    });
+
+    /**
+     *  -------------------------------
+     * | Send Attachment From Message |
+     *  -------------------------------
+    */
+    $(".attachment-input").change(function() {
+        imagePreview(this, '.attachment-preview');
+        $(".attachment-block").removeClass('d-none');
+    });
+
+    /**
+     *  ---------------------------------
+     * | cancels the attachemnt and form |
+     * | resets the form.                |
+     *  ---------------------------------
+    */
+    $(".cancel-attachment").click(function() {
+        messageFormReset();
     });
 
 });//End Method

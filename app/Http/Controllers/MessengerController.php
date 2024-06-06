@@ -181,6 +181,18 @@ class MessengerController extends Controller
     } //End Method
 
 
+    /**
+     * Fetches the contacts for the authenticated user
+     * from the database.
+     *
+     * @param \Illuminate\Http\Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    function fetchContacts(Request $request)
+    {  
+        dd($request->all());
+
+    } //End Method
 
 
 

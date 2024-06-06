@@ -39,13 +39,15 @@ Route::group(['middleware' => 'auth'], function() {
     //User Search Route
     Route::get('messenger/search', [MessengerController::class, 'search'])->name('messenger.search');
 
-    //Fetch User by Id
+    //Fetchs User by Id
     Route::get('messenger/id-info', [MessengerController::class, 'fetchIdInfo'])->name('messenger.id-info');
 
     //Send Message
     Route::post('messenger/send-message', [MessengerController::class,'sendMessage'])->name('messenger.send-message');  
 
-    //Fetching Messages of Selected User
+    //Fetchs Messages of Selected User
     Route::get('messenger/fetch-messages', [MessengerController::class, 'fetchMessages'])->name('messenger.fetch-messages');
 
+    //Fetchs Conatcts of the logged in User: (Converstations)
+    Route::get('messenger/fetch-contacts', [MessengerController::class, 'fetchContacts'])->name('messenger.fetch-contacts');
 });

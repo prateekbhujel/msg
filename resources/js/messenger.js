@@ -202,6 +202,33 @@ function fetchMessages(id, newFetch = false) {
 
 }//End Method
 
+/** 
+ *  ----------------------------------
+ * | Fetch contact list from database |
+ *  ----------------------------------
+*/
+let contactsPage = 1;
+let noMoreContacts = false;
+let contactLoading = false;
+function getContacts()
+{
+    if(!contactLoading && !noMoreContacts )
+    {
+        $.ajax({
+            method: "GET",
+            url: route("messenger.fetch-contacts"),
+            data: {page: contactsPage},
+            success: function(data){
+    
+            },
+            error: function(xhr, status, error){
+    
+            }
+        });
+    }
+
+
+}//End Method
 
 /**
  *  ----------------------
@@ -354,7 +381,8 @@ function scrolllToBottom(container) {
  *  ---------------
 */
 $(document).ready(function () {
-
+    getContacts();
+    
     $('#select_file').change(function () {
         imagePreview(this, '.profile-image-preview');
     });

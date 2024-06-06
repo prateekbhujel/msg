@@ -12,7 +12,7 @@ class UserProfileController extends Controller
     
     /**
      * Update the user's profile information after verification.
-     */
+    */
     public function update(Request $request)
     {
         $request->validate([

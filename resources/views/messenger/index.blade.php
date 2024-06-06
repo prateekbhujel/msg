@@ -92,10 +92,10 @@
                         <img src="{{ asset("public/assets/images/chat_img.png") }}" alt="User" class="img-fluid attachment-preview">
                         <span class="cancel-attachment"><i class="far fa-times"></i></span>
                     </div>
-                    <form action="#" class="message-form">
+                    <form action="#" class="message-form" enctype="multipart/form-data">
                         <div class="file">
                             <label for="file"><i class="far fa-plus"></i></label>
-                            <input id="file" class="attachment-input" type="file" hidden>
+                            <input id="file" class="attachment-input" name="attachment" type="file" hidden accept="image/*">
                         </div>
                         <textarea class="message-input" id="example1" rows="1" placeholder="Type a message.." name="message"></textarea>
                         <button type="submit"><i class="fas fa-paper-plane"></i></button>

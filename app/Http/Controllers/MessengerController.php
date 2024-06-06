@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Message;
 use App\Models\User;
+use App\Traits\FileUploadTrait;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
@@ -11,6 +12,8 @@ use Illuminate\View\View;
 class MessengerController extends Controller
 {
     
+    use FileUploadTrait;
+
     
     /**
      * Display the messenger index view.
@@ -80,20 +83,24 @@ class MessengerController extends Controller
         $request->validate([
             'message'        => ['required'],
             'id'             => ['required', 'integer'],
-            'temporaryMsgId' => ['required']
+            'temporaryMsgId' => ['required'],
+            'attachment'    =>  ['nullable', 'max:2048', 'image'],
         ]);
 
-        // Save message to database
-        // $message            = new Message();
-        // $message->from_id   = Auth::user()->id;
-        // $message->to_id     = $request->id;
-        // $message->body      = $request->message;
-        // $message->save();
+        // Store message data to database
+        $attachmentPath     = $this->uploadFile($request, 'attachment');
+        $message            = new Message();
+        $message->from_id   = Auth::user()->id;
+        $message->to_id     = $request->id;
+        $message->body      = $request->message;
+        if($attachmentPath) 
+            $message->attachment = json_encode($attachmentPath);
+        $message->save();
 
-        // return response()->json([
-        //     'message'   => $this->messageCard($message),
-        //     'tempID'    => $request->temporaryMsgId,
-        // ]);
+        return response()->json([
+            'message'   => $this->messageCard($message),
+            'tempID'    => $request->temporaryMsgId,
+        ]);
 
     } //End Method
 

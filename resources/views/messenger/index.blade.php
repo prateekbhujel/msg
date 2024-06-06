@@ -9,7 +9,7 @@
 
             <div class="wsus__message_paceholder d-none"></div> 
             <div class="wsus__message_paceholder_blank d-flex justify-content-center align-items-center">
-                <span class="select_a_user">Select an User to Start an Conversation !</span>
+                <span class="select_a_user text-muted fst-italic fs-5">Please, Select an User to Start an Conversation 🙂 !</span>
             </div> 
 
             <div class="wsus__chat_area_header">

@@ -747,7 +747,7 @@ button {
 .wsus__single_chat .messages {
     background: var(--colorWhite);
     display: inline-block;
-    padding: 5px 20px;
+    padding: 10px 20px;
     border-radius: 32px;
     font-size: 16px;
     font-weight: 400;

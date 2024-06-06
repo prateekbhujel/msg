@@ -76,8 +76,13 @@ class MessengerController extends Controller
     } //End Method
 
     /**
-     * Saves a new message to the database.
-     *
+     * Saves a new message to the db,
+     * and encrypts the message body 
+     *  while saving to db and uploads
+     * the attachment also decrypts
+     * the body and pass it to the response,
+     * in message ensuring the message privacy
+     * and safety of the user.
      * @param \Illuminate\Http\Request $request
      * @return void
     */
@@ -90,7 +95,7 @@ class MessengerController extends Controller
             'attachment'    =>  ['nullable', 'max:2048', 'image'],
         ]);
 
-        // Store message data to database
+        // Storing the  data to database and encrypting the message body.
         $attachmentPath     = $this->uploadFile($request, 'attachment');
         $message            = new Message();
         $message->from_id   = Auth::user()->id;
@@ -140,7 +145,25 @@ class MessengerController extends Controller
             'messages'     => '',
         ];
 
-        //todo: have to do a little validation
+        if(count($messages) < 1)
+        {
+            $name = User::where('id', $request->id)->first()->name;
+
+            $response['messages'] = "<div class='d-flex justify-content-center align-items-center h-100'>
+                                            <p class='text-muted'>
+                                                Oops, No Messages Here 😥 !!
+                                            </p>
+                                        </div>
+                                        <div class='d-flex justify-content-center align-items-center mb-4'>
+                                            <p class='text-muted fst-italic mt-2'>
+                                                Say 'Hey 🖐️' to {$name} and start the conversation!!
+                                            </p>
+                                        </div>
+                                    ";
+            
+        
+            return response()->json($response);
+        }
         
         $allMessages = '';
         foreach ($messages->reverse() as $message) 

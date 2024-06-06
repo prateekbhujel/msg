@@ -1,5 +1,3 @@
-
-
 /**
  *  ------------------
  * | Global Variables |
@@ -27,7 +25,9 @@ function enableChatBoxLoader()
 }//End Method
 function disableChatBoxLoader()
 {
+    $(".wsus__chat_app").removeClass('show_info');
     $(".wsus__message_paceholder").addClass('d-none');
+    $(".wsus__message_paceholder_blank").addClass('d-none');
 
 }//End Method
 function imagePreview(input, selector) 

@@ -622,7 +622,7 @@ button {
     background: #ffffffc4;
     z-index: 9999;
 }
-.wsus__chat_area .wsus__message_paceholder.blank {
+.wsus__message_paceholder_blank {
     position: absolute;
     width: 100%;
     height: 100%;

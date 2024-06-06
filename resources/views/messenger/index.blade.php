@@ -68,28 +68,13 @@
                     </div>
                 </div>
                 
-                {{-- <div class="wsus__single_chat_area">
-                    <div class="wsus__single_chat chat_right">
-                        <div class="pre_loader">
-                            <div class="spinner-border text-light" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                        </div>
-                        <a class="venobox" data-gall="gallery01" href="images/chat_img.png">
-                            <img src="{{ asset('public/assets/images/chat_img.png') }}" alt="gallery1" class="img-fluid w-100">
-                        </a>
-                        <span class="time"> 5h ago</span>
-                        <a class="action" href="#"><i class="fas fa-trash"></i></a>
-                    </div>
-                </div> --}}
-                
 
             </div>
 
             <div class="wsus__chat_area_footer">
                 <div class="footer_message">
                     <div class="img d-none attachment-block">
-                        <img src="{{ asset("public/assets/images/chat_img.png") }}" alt="User" class="img-fluid attachment-preview">
+                        <img src="" alt="User" class="img-fluid attachment-preview">
                         <span class="cancel-attachment"><i class="far fa-times"></i></span>
                     </div>
                     <form action="#" class="message-form" enctype="multipart/form-data">

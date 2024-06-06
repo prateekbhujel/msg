@@ -81,7 +81,7 @@ class MessengerController extends Controller
     public function sendMessage(Request $request)
     {
         $request->validate([
-            'message'        => ['required'],
+            // 'message'        => ['required'],
             'id'             => ['required', 'integer'],
             'temporaryMsgId' => ['required'],
             'attachment'    =>  ['nullable', 'max:2048', 'image'],
@@ -98,16 +98,16 @@ class MessengerController extends Controller
         $message->save();
 
         return response()->json([
-            'message'   => $this->messageCard($message),
+            'message'   => $message->attachment ?  $this->messageCard($message, true) : $this->messageCard($message),
             'tempID'    => $request->temporaryMsgId,
         ]);
 
     } //End Method
 
 
-    public function messageCard($message) 
+    public function messageCard($message, $attachment = false) 
     {
-        return view('messenger.components.message-card', compact('message'))->render();
+        return view('messenger.components.message-card', compact('message', 'attachment'))->render();
 
     }//End Method
 

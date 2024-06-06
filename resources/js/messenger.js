@@ -76,8 +76,7 @@ function sendMessage()
                     messageBoxContainer.append(sendTempMessageCard(inputValue, tempID));
                 }
 
-                messageForm.trigger("reset");
-                $(".emojionearea-editor").text("");
+                messageFormReset();
 
             },
             success: function(data){

@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Traits\FileUploadTrait;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\View\View;
 
 class MessengerController extends Controller
@@ -22,6 +23,7 @@ class MessengerController extends Controller
      */
     public function index(): View
     {
+        
         return view('messenger.index');
 
     } //End Method
@@ -92,10 +94,12 @@ class MessengerController extends Controller
         $message            = new Message();
         $message->from_id   = Auth::user()->id;
         $message->to_id     = $request->id;
-        $message->body      = $request->message;
+        $message->body      = Crypt::encrypt($request->message);
         if($attachmentPath) 
             $message->attachment = json_encode($attachmentPath);
         $message->save();
+
+        $message->body      = Crypt::decrypt($message->body);
 
         return response()->json([
             'message'   => $message->attachment ?  $this->messageCard($message, true) : $this->messageCard($message),
@@ -107,7 +111,7 @@ class MessengerController extends Controller
 
     public function messageCard($message, $attachment = false) 
     {
-        return view('messenger.components.message-card', compact('message', 'attachment'))->render();
+        return view('messenger.components.message-card', compact('message',  'attachment'))->render();
 
     }//End Method
 

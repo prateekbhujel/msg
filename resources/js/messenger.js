@@ -128,8 +128,7 @@ function sendTempMessageCard(message, tempId, attachemnt = false)
                     <div class="wsus__single_chat_area message-card" data-id="${tempId}">
                         <div class="wsus__single_chat chat_right">
                             <p class="messages">${message}</p>
-                            <span class="clock"><i class="fas fa-clock"></i> sending</span>
-                            <a class="action" href="#"><i class="fas fa-trash"></i></a>
+                            <span class="clock"><i class="fas fa-clock"></i> sending</span>b
                         </div>
                     </div>
                 `;

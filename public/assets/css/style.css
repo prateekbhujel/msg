@@ -607,11 +607,6 @@ button {
     -o-transform: scale(1);
 }
 
-
-
-
-
-
 .wsus__chat_area {
     width: 55%;
     height: 100%;
@@ -626,6 +621,19 @@ button {
     height: 100%;
     background: #ffffffc4;
     z-index: 9999;
+}
+.wsus__chat_area .wsus__message_paceholder.blank {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background: #ffff !important;
+    z-index: 9999;
+}
+
+.select_a_user {
+    padding: 5px 15px 5px 15px;
+    background: #e0dfdf;
+    border-radius: 10px;
 }
 
 .wsus__chat_area_header {

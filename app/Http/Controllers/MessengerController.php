@@ -210,9 +210,43 @@ class MessengerController extends Controller
                             ->groupBy('users.id', 'users.avatar', 'users.name','users.user_name', 'users.email', 'users.email_verified_at', 'users.password', 'users.remember_token', 'users.created_at', 'users.updated_at')
                             ->paginate(10);
 
-        return $users;
+        if(count($users) > 0)
+        {
+            $contacts = '';
+            foreach($users as $user)
+            {
+                $contacts .= $this->getContactItem($user);
+            }
+        }
+        
+        return $contacts;
 
     } //End Method
+
+    public function getContactItem($user)
+    {
+        $lastMessage = Message::where(function ($q) use ($user) {
+            $q->where('from_id', Auth::id())
+              ->where('to_id', $user->id);
+        })->orWhere(function ($q) use ($user) {
+            $q->where('from_id', $user->id)
+              ->where('to_id', Auth::id());
+        })->latest()->first();
+    
+        $unseenCounter = Message::where(function ($q) use ($user) {
+            $q->where('from_id', $user->id)
+              ->where('to_id', Auth::user()->id)
+              ->where('seen', 0);
+        })->count();
+    
+        // Ensure $lastMessage is a valid instance of Message
+        if ($lastMessage) 
+            $lastMessage->body = $lastMessage->body ? Crypt::decrypt($lastMessage->body) : null;
+        
+    
+        return view('messenger.components.contact-list-item', compact('lastMessage', 'unseenCounter', 'user'))->render();
+    }
+    
 
 
 

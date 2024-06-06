@@ -53,19 +53,6 @@
 
     <div class="wsus__user_list_area">
         <div class="top">All Messages</div>
-        <div class="wsus__user_list_area_height">
-            <div class="wsus__user_list_item">
-                <div class="img">
-                    <img src="{{ asset('public/assets/images/author_img_6.jpg') }}" alt="User" class="img-fluid">
-                    <span class="inactive"></span>
-                </div>
-                <div class="text">
-                    <h5>Achyut Ghimire</h5>
-                    <p><span>You</span> Huncha, Ma gardinxu. Okay</p>
-                </div>
-                <span class="time">2h ago</span>
-            </div>
-        </div>
 
         <!-- <div class="wsus__user_list_liading">
             <div class="spinner-border text-light" role="status">

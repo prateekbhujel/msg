@@ -149,6 +149,34 @@ function messageFormReset()
 
 }//End Method
 
+/** 
+ *  ------------------------------
+ * | Fetch messages from database |
+ *  ------------------------------
+*/
+let messagesPage = 1;
+let noMoreMessages = false;
+let messagesLoading = false;
+function fetchMessage(id)
+{
+    $.ajax({
+        method: 'GET',
+        url:  route('messenger.fetch-messages'),
+        data: {
+            _token: csrf_token,
+            id: id,
+            page: messagesPage
+        },
+        success: function(data){
+
+        },
+        error: function(xhr, status, error){
+
+        }
+    });
+
+}//End Method
+
 
 /**
  *  ----------------------
@@ -279,6 +307,8 @@ function debounce(callback, delay)
             enableChatBoxLoader();
         },
         success: function(data){
+            //Fetch Messages
+            fetchMessage(data.fetch.id);
             $(".messenger-header").find("img").attr("src", data.fetch.avatar);
             $(".messenger-header").find("h4").text(data.fetch.name);
             

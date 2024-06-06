@@ -116,8 +116,18 @@ class MessengerController extends Controller
     }//End Method
 
 
+    /**
+     * Fetches messages from the database
+     * for the authenticated user.
+     *
+     * @param \Illuminate\Http\Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function fetchMessages(Request $request)
+    {
+        dd($request->all());
 
-
+    } //End Method
 
 
 

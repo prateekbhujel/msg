@@ -45,6 +45,7 @@ Route::group(['middleware' => 'auth'], function() {
     //Send Message
     Route::post('messenger/send-message', [MessengerController::class,'sendMessage'])->name('messenger.send-message');  
 
-    
+    //Fetching Messages of Selected User
+    Route::get('messenger/fetch-messages', [MessengerController::class, 'fetchMessages'])->name('messenger.fetch-messages');
 
 });

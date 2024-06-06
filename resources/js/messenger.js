@@ -129,7 +129,7 @@ function sendTempMessageCard(message, tempId, attachemnt = false)
                     <div class="wsus__single_chat_area message-card" data-id="${tempId}">
                         <div class="wsus__single_chat chat_right">
                             <p class="messages">${message}</p>
-                            <span class="clock"><i class="fas fa-clock"></i> sending</span>b
+                            <span class="clock"><i class="fas fa-clock"></i> sending</span>
                         </div>
                     </div>
                 `;
@@ -182,8 +182,14 @@ function fetchMessages(id, newFetch = false)
                     scrolllToBottom(messageBoxContainer);
 
                 }else{
-
+                    const lastMsg = $(messageBoxContainer).find(".message-card").first();
+                    const curOffset = lastMsg.offset().top - messageBoxContainer.scrollTop();
+                    
                     messageBoxContainer.prepend(data.messages);
+                    
+                    messageBoxContainer.scrollTop(lastMsg.offset().top - curOffset);
+
+
 
                 }
 

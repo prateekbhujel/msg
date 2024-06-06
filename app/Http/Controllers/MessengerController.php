@@ -41,9 +41,10 @@ class MessengerController extends Controller
         $input = $request['query'];
 
         $records = User::where('id', '!=', Auth::user()->id)
-            ->where('name', 'LIKE', "%{$input}%")
-            ->orWhere('user_name', 'LIKE', "%{$input}%")
-            ->paginate(10);
+                        ->where(function ($q) use ($input) {
+                                $q->where('name', 'LIKE', "%{$input}%")
+                                  ->orWhere('user_name', 'LIKE', "%{$input}%");
+                        })->paginate(10);
 
         if($records->total() < 1)
         {
@@ -125,14 +126,18 @@ class MessengerController extends Controller
      */
     public function fetchMessages(Request $request)
     {
-        $messages = Message::where('from_id', Auth::user()->id)
-                            ->where('to_id', $request->id)
-                            ->orWhere('from_id', $request->id)
-                            ->orWhere('to_id', Auth::user()->id)
-                            ->latest()->paginate(10);
+        $messages = Message::where(function ($q) use ($request) {
+                            $q->where('from_id', Auth::id())
+                            ->where('to_id', $request->id);
+                            })->orWhere(function ($q) use ($request) {
+                            $q->where('from_id', $request->id)
+                            ->where('to_id', Auth::id());
+                        })->latest()->paginate(20);
+
         $response = [
-            'last_page' => $messages->lastPage(),
-            'messages' => '',
+            'last_page'    => $messages->lastPage(),
+            'last_message' => $messages->last(),
+            'messages'     => '',
         ];
 
         //todo: have to do a little validation
@@ -149,7 +154,7 @@ class MessengerController extends Controller
         $response['messages'] = $allMessages;
 
         return response()->json($response);
-        
+
     } //End Method
 
 

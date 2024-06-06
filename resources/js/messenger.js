@@ -76,6 +76,7 @@ function sendMessage()
                     messageBoxContainer.append(sendTempMessageCard(inputValue, tempID));
                 }
 
+                scrolllToBottom(messageBoxContainer);  
                 messageFormReset();
 
             },
@@ -169,6 +170,7 @@ function fetchMessages(id)
         },
         success: function(data){
             messageBoxContainer.append(data.messages);
+            scrolllToBottom(messageBoxContainer);
         },
         error: function(xhr, status, error){
 
@@ -327,7 +329,18 @@ function debounce(callback, delay)
 
  }//End Method
 
+/** 
+ *  ----------------------------
+ * | Slide to bottom on action. |
+ *  ----------------------------
+*/
+function scrolllToBottom(container)
+{
+    $(container).stop().animate({
+        scrollTop: $(container)[0].scrollHeight
+    });
 
+}//End Method
 
 /**
  *  ---------------

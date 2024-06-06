@@ -129,7 +129,7 @@ class MessengerController extends Controller
                             ->where('to_id', $request->id)
                             ->orWhere('from_id', $request->id)
                             ->orWhere('to_id', Auth::user()->id)
-                            ->latest()->paginate(20);
+                            ->latest()->paginate(10);
         $response = [
             'last_page' => $messages->lastPage(),
             'messages' => '',
@@ -149,6 +149,7 @@ class MessengerController extends Controller
         $response['messages'] = $allMessages;
 
         return response()->json($response);
+        
     } //End Method
 
 

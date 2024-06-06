@@ -158,24 +158,45 @@ function messageFormReset()
 let messagesPage = 1;
 let noMoreMessages = false;
 let messagesLoading = false;
-function fetchMessages(id)
+function fetchMessages(id, newFetch = false)
 {
-    $.ajax({
-        method: 'GET',
-        url:  route('messenger.fetch-messages'),
-        data: {
-            _token: csrf_token,
-            id: id,
-            page: messagesPage
-        },
-        success: function(data){
-            messageBoxContainer.append(data.messages);
-            scrolllToBottom(messageBoxContainer);
-        },
-        error: function(xhr, status, error){
+    if(newFetch){
+        messagesPage = 1;
+        noMoreMessages = false;
+    }
+    if(!noMoreMessages)
+    {
+        $.ajax({
+            method: 'GET',
+            url:  route('messenger.fetch-messages'),
+            data: {
+                _token: csrf_token,
+                id: id,
+                page: messagesPage
+            },
+            success: function(data)
+            {
+                if(messagesPage == 1){
 
-        }
-    });
+                    messageBoxContainer.html(data.messages);
+                    scrolllToBottom(messageBoxContainer);
+
+                }else{
+
+                    messageBoxContainer.prepend(data.messages);
+
+                }
+
+                //Pagination Lock and Page Increment
+                noMoreMessages = messagesPage >= data?.last_page;
+                if(!noMoreMessages) messagesPage += 1;
+
+            },
+            error: function(xhr, status, error){
+
+            }
+        });
+    }
 
 }//End Method
 
@@ -310,7 +331,7 @@ function debounce(callback, delay)
         },
         success: function(data){
             //Fetch Messages
-            fetchMessages(data.fetch.id);
+            fetchMessages(data.fetch.id, true);
             $(".messenger-header").find("img").attr("src", data.fetch.avatar);
             $(".messenger-header").find("h4").text(data.fetch.name);
             
@@ -429,6 +450,17 @@ $(document).ready(function()
         messageFormReset();
 
     });
+
+    /** 
+     *   ----------------------------
+     *  | Message Pagination method  |
+     *   ----------------------------
+    */
+    actionOnScroll(".wsus__chat_area_body", function() {
+        
+        fetchMessages(getMessengerId());
+
+    }, true);
 
 });//End Method
 

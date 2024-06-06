@@ -5,13 +5,14 @@
 */
 var temporaryMsgId = 0;
 
-const messageForm = $(".message-form"),
-    messageInput = $(".message-input"),
-    messageBoxContainer = $(".wsus__chat_area_body"),
-    csrf_token = $("meta[name=csrf-token]").attr("content");
+const messageForm           = $(".message-form"),
+    messageInput            = $(".message-input"),
+    messageBoxContainer     = $(".wsus__chat_area_body"),
+    csrf_token              = $("meta[name=csrf-token]").attr("content"),
+    messengerContactBox     = $(".messenger-contacts");
 
-const getMessengerId = () => $("meta[name=id]").attr("content");
-const setMessengerId = (id) => $("meta[name=id]").attr("content", id);
+const getMessengerId        = () => $("meta[name=id]").attr("content");
+const setMessengerId        = (id) => $("meta[name=id]").attr("content", id);
 
 /**
  *  ---------------------
@@ -219,7 +220,7 @@ function getContacts()
             url: route("messenger.fetch-contacts"),
             data: {page: contactsPage},
             success: function(data){
-    
+                messengerContactBox.html(data.contacts);
             },
             error: function(xhr, status, error){
     
@@ -382,7 +383,7 @@ function scrolllToBottom(container) {
 */
 $(document).ready(function () {
     getContacts();
-    
+
     $('#select_file').change(function () {
         imagePreview(this, '.profile-image-preview');
     });

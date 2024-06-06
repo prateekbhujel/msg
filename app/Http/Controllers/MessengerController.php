@@ -217,9 +217,15 @@ class MessengerController extends Controller
             {
                 $contacts .= $this->getContactItem($user);
             }
+        }else
+        {
+            $contacts = "<p>Your Contacts list is empty! </p>";
         }
-        
-        return $contacts;
+
+        return response()->json([
+            'contacts'  => $contacts,
+            'last_page' => $users->lastPage()
+        ]);
 
     } //End Method
 

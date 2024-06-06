@@ -53,7 +53,9 @@
 
     <div class="wsus__user_list_area">
         <div class="top">All Messages</div>
+        <div class="messenger-contacts">
 
+        </div>
         <!-- <div class="wsus__user_list_liading">
             <div class="spinner-border text-light" role="status">
                 <span class="visually-hidden">Loading...</span>

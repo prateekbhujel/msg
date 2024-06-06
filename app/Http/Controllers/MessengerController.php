@@ -94,12 +94,11 @@ class MessengerController extends Controller
         $message            = new Message();
         $message->from_id   = Auth::user()->id;
         $message->to_id     = $request->id;
-        $message->body      = Crypt::encrypt($request->message);
+        $message->body      =  $message->body = $request->message ? Crypt::encrypt($request->message) : null;
         if($attachmentPath) 
             $message->attachment = json_encode($attachmentPath);
         $message->save();
-
-        $message->body      = Crypt::decrypt($message->body);
+        $message->body = $message->body ? Crypt::decrypt($message->body) : null;
 
         return response()->json([
             'message'   => $message->attachment ?  $this->messageCard($message, true) : $this->messageCard($message),
@@ -139,14 +138,12 @@ class MessengerController extends Controller
         //todo: have to do a little validation
         
         $allMessages = '';
-        foreach ($messages as $message) 
+        foreach ($messages->reverse() as $message) 
         {
-            try {
-                $message->body = Crypt::decrypt($message->body);
-            } catch (\Exception $e) {
-                continue; // Skip messages that can't be decrypted
-            }
-            $allMessages .= $this->messageCard($message);
+            $message->body = $message->body ? Crypt::decrypt($message->body) : null;
+        
+            
+            $allMessages .= $this->messageCard($message, $message->attachment ? true : false);
         }
 
         $response['messages'] = $allMessages;

@@ -157,7 +157,7 @@ function messageFormReset()
 let messagesPage = 1;
 let noMoreMessages = false;
 let messagesLoading = false;
-function fetchMessage(id)
+function fetchMessages(id)
 {
     $.ajax({
         method: 'GET',
@@ -168,7 +168,7 @@ function fetchMessage(id)
             page: messagesPage
         },
         success: function(data){
-
+            messageBoxContainer.append(data.messages);
         },
         error: function(xhr, status, error){
 
@@ -308,7 +308,7 @@ function debounce(callback, delay)
         },
         success: function(data){
             //Fetch Messages
-            fetchMessage(data.fetch.id);
+            fetchMessages(data.fetch.id);
             $(".messenger-header").find("img").attr("src", data.fetch.avatar);
             $(".messenger-header").find("h4").text(data.fetch.name);
             

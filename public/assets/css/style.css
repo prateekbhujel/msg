@@ -77,9 +77,8 @@ button {
     --colorPrimary: #2180f3;
     --paraColor: #787882;
     --colorBlack: #121212;
-    --colorWhite: #ffffff;
+    --colorWhite: #FFFFFF;
     --colorLightBg: #ecf5ff;
-    --customColor: #d6d6d6;
     --bodyFont: "Lato", sans-serif;
 }
 
@@ -746,10 +745,10 @@ button {
 }
 
 .wsus__single_chat .messages {
-    background: var(--customColor);
+    background: var(--colorWhite);
     display: inline-block;
     padding: 5px 20px;
-    border-radius: 50px;
+    border-radius: 32px;
     font-size: 16px;
     font-weight: 400;
     color: var(--colorBlack);

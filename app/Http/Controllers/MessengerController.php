@@ -111,6 +111,7 @@ class MessengerController extends Controller
 
     public function messageCard($message, $attachment = false) 
     {
+        
         return view('messenger.components.message-card', compact('message',  'attachment'))->render();
 
     }//End Method
@@ -125,8 +126,32 @@ class MessengerController extends Controller
      */
     public function fetchMessages(Request $request)
     {
-        dd($request->all());
+        $messages = Message::where('from_id', Auth::user()->id)
+                            ->where('to_id', $request->id)
+                            ->orWhere('from_id', $request->id)
+                            ->orWhere('to_id', Auth::user()->id)
+                            ->latest()->paginate(20);
+        $response = [
+            'last_page' => $messages->lastPage(),
+            'messages' => '',
+        ];
 
+        //todo: have to do a little validation
+        
+        $allMessages = '';
+        foreach ($messages as $message) 
+        {
+            try {
+                $message->body = Crypt::decrypt($message->body);
+            } catch (\Exception $e) {
+                continue; // Skip messages that can't be decrypted
+            }
+            $allMessages .= $this->messageCard($message);
+        }
+
+        $response['messages'] = $allMessages;
+
+        return response()->json($response);
     } //End Method
 
 

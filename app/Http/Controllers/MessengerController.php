@@ -8,6 +8,7 @@ use App\Traits\FileUploadTrait;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class MessengerController extends Controller
@@ -180,17 +181,36 @@ class MessengerController extends Controller
 
     } //End Method
 
-
     /**
-     * Fetches the contacts for the authenticated user
-     * from the database.
+     * Fetches a paginated list of contacts for 
+     * the authenticated user.
+     *
+     * This method joins the `messages` and `users` tables
+     * to retrieve a list of users that the authenticated 
+     * user has had a conversation with. It orders the results 
+     * by the most recent message and groups the results by 
+     * user ID, paginating the response.
      *
      * @param \Illuminate\Http\Request $request
-     * @return \Illuminate\Http\JsonResponse
+     * @return \Illuminate\Pagination\LengthAwarePaginator
      */
     function fetchContacts(Request $request)
-    {  
-        dd($request->all());
+    {
+        $users = Message::join('users', function ($join) {
+                        $join->on('messages.from_id', '=', 'users.id')
+                            ->orOn('messages.to_id', '=', 'users.id');
+                        })
+                            ->where(function ($q) {
+                            $q->where('messages.from_id', Auth::user()->id)
+                            ->orWhere('messages.to_id', Auth::user()->id);
+                        })
+                            ->where('users.id', '!=', Auth::user()->id)
+                            ->select('users.*', DB::raw('MAX(messages.created_at) max_created_at'))
+                            ->orderBy('max_created_at', 'desc')
+                            ->groupBy('users.id', 'users.avatar', 'users.name','users.user_name', 'users.email', 'users.email_verified_at', 'users.password', 'users.remember_token', 'users.created_at', 'users.updated_at')
+                            ->paginate(10);
+
+        return $users;
 
     } //End Method
 

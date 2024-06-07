@@ -409,10 +409,27 @@ function scrolllToBottom(container) {
  * | On DOM Load   |
  *  ---------------
 */
-$(document).ready(function () 
-{
+getContacts();
 
-    getContacts();
+$(document).ready(function () 
+{   
+    /**
+     *  -------------------------------------------
+     * | Hides the contact lists and shows mesages |
+     * | and vice-versa.                           |
+     *  -------------------------------------------
+    */
+    if(window.innerWidth < 768)
+    {
+        $("body").on("click", ".messenger-list-item", function() {
+            $(".wsus__user_list").addClass('d-none');
+        }); 
+        
+        $("body").on("click", ".back_to_list", function() {
+            $(".wsus__user_list").removeClass('d-none');
+        });
+
+    }
     
     /**
      *   ------------------------------

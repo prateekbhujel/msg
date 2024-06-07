@@ -39,7 +39,7 @@
 
     <div class="wsus__save_message">
         <div class="top">your space</div>
-        <div class="wsus__save_message_center">
+        <div class="wsus__save_message_center messenger-list-item" data-id = "{{ auth()->user()->id }}">
             <div class="icon">
                 <i class="far fa-bookmark"></i>
             </div>

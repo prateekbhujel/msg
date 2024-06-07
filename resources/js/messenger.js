@@ -8,7 +8,8 @@ var temporaryMsgId = 0;
 const messageForm           = $(".message-form"),
     messageInput            = $(".message-input"),
     messageBoxContainer     = $(".wsus__chat_area_body"),
-    csrf_token              = $("meta[name=csrf-token]").attr("content"),
+    csrf_token              = $("meta[name=csrf_token]").attr("content"),
+    auth_id                 = $("meta[name=auth_id]").attr("content"),
     messengerContactBox     = $(".messenger-contacts");
 
 const getMessengerId        = () => $("meta[name=id]").attr("content");
@@ -422,22 +423,25 @@ function scrolllToBottom(container) {
 */
 function updateContactItem(user_id)
 {
-    $.ajax({
-        method: 'GET',
-        url : route('messenger.update-contact-item'),
-        data: { user_id: user_id },
-        success: function(data){
-            messengerContactBox.find(`.messenger-list-item[data-id="${user_id}"]`).remove();
-            messengerContactBox.prepend(data.contact_item);
-            
-            if(user_id == getMessengerId()) updateSelectedContent(user_id);
-
-        },
-        error: function(xhr, status, error){
-
-        }
-
-    });
+    if(user_id != auth_id)
+    {
+        $.ajax({
+            method: 'GET',
+            url : route('messenger.update-contact-item'),
+            data: { user_id: user_id },
+            success: function(data){
+                messengerContactBox.find(`.messenger-list-item[data-id="${user_id}"]`).remove();
+                messengerContactBox.prepend(data.contact_item);
+                
+                if(user_id == getMessengerId()) updateSelectedContent(user_id);
+    
+            },
+            error: function(xhr, status, error){
+    
+            }
+    
+        });
+    }
 
 }//End Method
 

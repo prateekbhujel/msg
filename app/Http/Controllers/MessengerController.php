@@ -7,34 +7,34 @@ use App\Models\User;
 use App\Traits\FileUploadTrait;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class MessengerController extends Controller
 {
-    
     use FileUploadTrait;
 
-    
+
     /**
-     * Display the messenger index view.
+     * Displays the main messenger interface.
      *
-     * @return \Illuminate\View\View
-     */
+     * This method returns the view for the main messenger interface, which allows users to send and receive messages.
+     *
+     * @return \Illuminate\View\View The view for the main messenger interface.
+    */
     public function index(): View
     {
-        
         return view('messenger.index');
 
     } //End Method
 
-
     /**
-     * Search for user profiles based on input (user ID and name) from the user model, excluding the logged-in user.
+     * Searches for users based on the provided query and returns the search results.
      *
-     * @param \Illuminate\Http\Request $request
-     * @return \Illuminate\Http\JsonResponse
+     * This method takes a search query from the request, and returns a JSON response containing the search results. The search is performed on the user's name and username, and the results are paginated.
+     *
+     * @param \Illuminate\Http\Request $request The incoming HTTP request, which must contain the search query.
+     * @return \Illuminate\Http\JsonResponse A JSON response containing the search results and the last page of the pagination.
     */
     public function search(Request $request)
     {
@@ -42,13 +42,12 @@ class MessengerController extends Controller
         $input = $request['query'];
 
         $records = User::where('id', '!=', Auth::user()->id)
-                        ->where(function ($q) use ($input) {
-                                $q->where('name', 'LIKE', "%{$input}%")
-                                  ->orWhere('user_name', 'LIKE', "%{$input}%");
-                        })->paginate(10);
+            ->where(function ($q) use ($input) {
+                $q->where('name', 'LIKE', "%{$input}%")
+                    ->orWhere('user_name', 'LIKE', "%{$input}%");
+            })->paginate(10);
 
-        if($records->total() < 1)
-        {
+        if ($records->total() < 1) {
             $getRecords = '<p class="text-center mt-3"> No results found. </p>';
         }
         foreach ($records as $record) {
@@ -56,16 +55,18 @@ class MessengerController extends Controller
         }
 
         return response()->json([
-            'records'   => $getRecords,
+            'records' => $getRecords,
             'last_page' => $records->lastPage(),
         ]);
     } //End Method
 
     /**
-     * Fetch information about the provided request ID.
+     * Fetches user information for the specified user ID.
      *
-     * @param \Illuminate\Http\Request $request
-     * @return void
+     * This method takes a request containing the user ID, and returns a JSON response with the fetched user information.
+     *
+     * @param \Illuminate\Http\Request $request The incoming HTTP request, which must contain the user ID.
+     * @return \Illuminate\Http\JsonResponse A JSON response containing the fetched user information.
     */
     public function fetchIdInfo(Request $request)
     {
@@ -73,81 +74,83 @@ class MessengerController extends Controller
         return response()->json([
             'fetch' => $fetch,
         ]);
-
     } //End Method
 
     /**
-     * Saves a new message to the db,
-     * and encrypts the message body 
-     *  while saving to db and uploads
-     * the attachment also decrypts
-     * the body and pass it to the response,
-     * in message ensuring the message privacy
-     * and safety of the user.
-     * @param \Illuminate\Http\Request $request
-     * @return void
+     * Sends a message from the authenticated user to the user with the specified ID.
+     *
+     * This method validates the incoming request, uploads any attached file, creates a new message, and returns a JSON response containing the message card HTML and the temporary message ID.
+     *
+     * @param \Illuminate\Http\Request $request The incoming HTTP request, which must contain the ID of the recipient, the temporary message ID, and an optional file attachment.
+     * @return \Illuminate\Http\JsonResponse A JSON response containing the message card HTML and the temporary message ID.
     */
     public function sendMessage(Request $request)
     {
         $request->validate([
-            // 'message'        => ['required'],
-            'id'             => ['required', 'integer'],
+            'id' => ['required', 'integer'],
             'temporaryMsgId' => ['required'],
-            'attachment'    =>  ['nullable', 'max:2048', 'image'],
+            'attachment' => ['nullable', 'max:2048', 'image'],
         ]);
 
-        // Storing the  data to database and encrypting the message body.
-        $attachmentPath     = $this->uploadFile($request, 'attachment');
-        $message            = new Message();
-        $message->from_id   = Auth::user()->id;
-        $message->to_id     = $request->id;
-        $message->body      =  $message->body = $request->message ? Crypt::encrypt($request->message) : null;
-        if($attachmentPath) 
+        $attachmentPath = $this->uploadFile($request, 'attachment');
+        $message = new Message();
+        $message->from_id = Auth::user()->id;
+        $message->to_id = $request->id;
+        $message->body = $request->message;
+        if ($attachmentPath) {
             $message->attachment = json_encode($attachmentPath);
+        }
         $message->save();
-        $message->body = $message->body ? Crypt::decrypt($message->body) : null;
 
         return response()->json([
-            'message'   => $message->attachment ?  $this->messageCard($message, true) : $this->messageCard($message),
-            'tempID'    => $request->temporaryMsgId,
+            'message' => $message->attachment ? $this->messageCard($message, true) : $this->messageCard($message),
+            'tempID' => $request->temporaryMsgId,
         ]);
+
+    }//End Method
+
+    /**
+     * Generates a message card HTML for a given message.
+     *
+     * This method takes a message object and an optional boolean flag indicating whether the message has an attachment. It then renders a view that generates the HTML for the message card, which can be used to display the message in the user interface.
+     *
+     * @param \App\Models\Message $message The message object for which to generate the message card.
+     * @param bool $attachment Whether the message has an attachment.
+     * @return string The rendered HTML for the message card.
+    */
+    public function messageCard($message, $attachment = false)
+    {
+        return view('messenger.components.message-card', compact('message', 'attachment'))->render();
 
     } //End Method
 
 
-    public function messageCard($message, $attachment = false) 
-    {
-        
-        return view('messenger.components.message-card', compact('message',  'attachment'))->render();
-
-    }//End Method
-
-
     /**
-     * Fetches messages from the database
-     * for the authenticated user.
+     * Fetches a paginated list of messages between the authenticated user and the user with the specified ID.
      *
-     * @param \Illuminate\Http\Request $request
-     * @return \Illuminate\Http\JsonResponse
-     */
+     * This method retrieves a paginated list of messages between the authenticated user and the user with the specified ID.
+     * The messages are ordered by the latest message first, and 20 messages are returned per page.
+     *
+     * @param \Illuminate\Http\Request $request The incoming HTTP request, which must contain the ID of the user to fetch messages for.
+     * @return \Illuminate\Http\JsonResponse A JSON response containing the list of messages, the last page number, and the last message.
+    */
     public function fetchMessages(Request $request)
     {
         $messages = Message::where(function ($q) use ($request) {
-                            $q->where('from_id', Auth::id())
-                            ->where('to_id', $request->id);
-                            })->orWhere(function ($q) use ($request) {
-                            $q->where('from_id', $request->id)
-                            ->where('to_id', Auth::id());
-                        })->latest()->paginate(20);
+            $q->where('from_id', Auth::id())
+                ->where('to_id', $request->id);
+        })->orWhere(function ($q) use ($request) {
+            $q->where('from_id', $request->id)
+                ->where('to_id', Auth::id());
+        })->latest()->paginate(20);
 
         $response = [
-            'last_page'    => $messages->lastPage(),
+            'last_page' => $messages->lastPage(),
             'last_message' => $messages->last(),
-            'messages'     => '',
+            'messages' => '',
         ];
 
-        if(count($messages) < 1)
-        {
+        if (count($messages) < 1) {
             $name = User::where('id', $request->id)->first()->name;
 
             $response['messages'] = "<div class='d-flex justify-content-center align-items-center h-100'>
@@ -161,98 +164,88 @@ class MessengerController extends Controller
                                             </p>
                                         </div>
                                     ";
-            
-        
+
             return response()->json($response);
         }
-        
+
         $allMessages = '';
-        foreach ($messages->reverse() as $message) 
-        {
-            $message->body = $message->body ? Crypt::decrypt($message->body) : null;
-        
-            
+        foreach ($messages->reverse() as $message) {
             $allMessages .= $this->messageCard($message, $message->attachment ? true : false);
         }
 
         $response['messages'] = $allMessages;
 
         return response()->json($response);
-
     } //End Method
 
+
     /**
-     * Fetches a paginated list of contacts for 
-     * the authenticated user.
+     * Fetches a paginated list of contacts for the authenticated user.
      *
-     * This method joins the `messages` and `users` tables
-     * to retrieve a list of users that the authenticated 
-     * user has had a conversation with. It orders the results 
-     * by the most recent message and groups the results by 
-     * user ID, paginating the response.
+     * This method retrieves a list of users that the authenticated user has
+     * previously messaged, ordered by the most recent message. The list is
+     * paginated with 10 contacts per page.
      *
-     * @param \Illuminate\Http\Request $request
-     * @return \Illuminate\Pagination\LengthAwarePaginator
-     */
+     * @param \Illuminate\Http\Request $request The incoming HTTP request.
+     * @return \Illuminate\Http\JsonResponse A JSON response containing the list of contacts and the last page number.
+    */
     function fetchContacts(Request $request)
     {
         $users = Message::join('users', function ($join) {
-                        $join->on('messages.from_id', '=', 'users.id')
-                            ->orOn('messages.to_id', '=', 'users.id');
-                        })
-                            ->where(function ($q) {
-                            $q->where('messages.from_id', Auth::user()->id)
-                            ->orWhere('messages.to_id', Auth::user()->id);
-                        })
-                            ->where('users.id', '!=', Auth::user()->id)
-                            ->select('users.*', DB::raw('MAX(messages.created_at) max_created_at'))
-                            ->orderBy('max_created_at', 'desc')
-                            ->groupBy('users.id', 'users.avatar', 'users.name','users.user_name', 'users.email', 'users.email_verified_at', 'users.password', 'users.remember_token', 'users.created_at', 'users.updated_at')
-                            ->paginate(10);
+            $join->on('messages.from_id', '=', 'users.id')
+                ->orOn('messages.to_id', '=', 'users.id');
+        })
+            ->where(function ($q) {
+                $q->where('messages.from_id', Auth::user()->id)
+                    ->orWhere('messages.to_id', Auth::user()->id);
+            })
+            ->where('users.id', '!=', Auth::user()->id)
+            ->select('users.*', DB::raw('MAX(messages.created_at) max_created_at'))
+            ->orderBy('max_created_at', 'desc')
+            ->groupBy('users.id', 'users.avatar', 'users.name', 'users.user_name', 'users.email', 'users.email_verified_at', 'users.password', 'users.remember_token', 'users.created_at', 'users.updated_at')
+            ->paginate(10);
 
-        if(count($users) > 0)
-        {
+        if (count($users) > 0) {
             $contacts = '';
-            foreach($users as $user)
-            {
+            foreach ($users as $user) {
                 $contacts .= $this->getContactItem($user);
             }
-        }else
-        {
+        } else {
             $contacts = "<p>Your Contacts list is empty! </p>";
         }
 
         return response()->json([
-            'contacts'  => $contacts,
+            'contacts' => $contacts,
             'last_page' => $users->lastPage()
         ]);
 
-    } //End Method
+    }//End Method
 
+
+    /**
+     * Generates a contact list item view for a given user.
+     *
+     * @param \App\Models\User $user The user to generate the contact list item for.
+     * @return string The rendered contact list item view.
+    */
     public function getContactItem($user)
     {
         $lastMessage = Message::where(function ($q) use ($user) {
             $q->where('from_id', Auth::id())
-              ->where('to_id', $user->id);
+                ->where('to_id', $user->id);
         })->orWhere(function ($q) use ($user) {
             $q->where('from_id', $user->id)
-              ->where('to_id', Auth::id());
+                ->where('to_id', Auth::id());
         })->latest()->first();
-    
+
         $unseenCounter = Message::where(function ($q) use ($user) {
             $q->where('from_id', $user->id)
-              ->where('to_id', Auth::user()->id)
-              ->where('seen', 0);
+                ->where('to_id', Auth::user()->id)
+                ->where('seen', 0);
         })->count();
-    
-        // Ensure $lastMessage is a valid instance of Message
-        if ($lastMessage) 
-            $lastMessage->body = $lastMessage->body ? Crypt::decrypt($lastMessage->body) : null;
-        
-    
+
         return view('messenger.components.contact-list-item', compact('lastMessage', 'unseenCounter', 'user'))->render();
-    }
-    
+    } //End Method
 
 
 

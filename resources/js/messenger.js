@@ -381,8 +381,24 @@ function scrolllToBottom(container) {
  * | On DOM Load   |
  *  ---------------
 */
-$(document).ready(function () {
+$(document).ready(function () 
+{
+    
     getContacts();
+    
+    /**
+     *   ------------------------------
+     *  | Short-cut Key for Search box |
+     *   ------------------------------
+     */
+    $('body').on('keydown', function(e) {
+        if (e.ctrlKey && e.key === 's') {
+            e.preventDefault(); // Prevent the default browser action (save page)
+            var $input = $('.user_search');
+            $input.show().focus(); // Show and focus the input element
+            $input.trigger('click'); 
+        }
+    });
 
     $('#select_file').change(function () {
         imagePreview(this, '.profile-image-preview');

@@ -8,7 +8,6 @@ use App\Traits\FileUploadTrait;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\View\View;
 
 class MessengerController extends Controller
 {
@@ -22,11 +21,12 @@ class MessengerController extends Controller
      *
      * @return \Illuminate\View\View The view for the main messenger interface.
     */
-    public function index(): View
+    public function index()
     {
         return view('messenger.index');
 
     } //End Method
+
 
     /**
      * Searches for users based on the provided query and returns the search results.
@@ -60,6 +60,7 @@ class MessengerController extends Controller
         ]);
     } //End Method
 
+
     /**
      * Fetches user information for the specified user ID.
      *
@@ -75,6 +76,7 @@ class MessengerController extends Controller
             'fetch' => $fetch,
         ]);
     } //End Method
+
 
     /**
      * Sends a message from the authenticated user to the user with the specified ID.
@@ -108,6 +110,7 @@ class MessengerController extends Controller
         ]);
 
     }//End Method
+
 
     /**
      * Generates a message card HTML for a given message.
@@ -189,7 +192,7 @@ class MessengerController extends Controller
      * @param \Illuminate\Http\Request $request The incoming HTTP request.
      * @return \Illuminate\Http\JsonResponse A JSON response containing the list of contacts and the last page number.
     */
-    function fetchContacts(Request $request)
+    function fetchContacts()
     {
         $users = Message::join('users', function ($join) {
             $join->on('messages.from_id', '=', 'users.id')
@@ -270,7 +273,7 @@ class MessengerController extends Controller
         return response()->json([
             'contact_item' => $contactItem
         ], 200);
-        
+
     } //End Method
 
 

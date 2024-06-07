@@ -422,6 +422,10 @@ function updateContactItem(user_id)
         url : route('messenger.update-contact-item'),
         data: { user_id: user_id },
         success: function(data){
+            messengerContactBox.find(`.messenger-list-item[data-id="${user_id}"]`).remove();
+            messengerContactBox.prepend(data.contact_item);
+            
+            if(user_id == getMessengerId()) updateSelectedContent(user_id);
 
         },
         error: function(xhr, status, error){
@@ -429,6 +433,20 @@ function updateContactItem(user_id)
         }
 
     });
+
+}//End Method
+
+
+/**
+ *  -------------------------------------
+ * | Updates the selected content in dom |
+ * | sets to active class.               |
+ *  -------------------------------------
+*/
+function updateSelectedContent(user_id)
+{
+    $(".messenger-list-item").removeClass('active');
+    $(`.messenger-list-item[data-id="${user_id}"]`).addClass('active');
 
 }//End Method
 
@@ -514,6 +532,9 @@ $(document).ready(function ()
     */
     $("body").on('click', '.messenger-list-item', function () {
         const dataId = $(this).attr('data-id');
+        
+        updateSelectedContent(dataId);
+        
         setMessengerId(dataId);
         Idinfo(dataId);
     });

@@ -74,8 +74,11 @@ class MessengerController extends Controller
     public function fetchIdInfo(Request $request)
     {
         $fetch = User::where('id', $request['id'])->first();
+        $favorite = Favourite::where(['user_id' => Auth::user()->id, 'favourite_id' => $fetch->id])->exists();
+
         return response()->json([
-            'fetch' => $fetch,
+            'fetch'     => $fetch,
+            'favorite'  => $favorite
         ]);
     } //End Method
 
@@ -309,6 +312,7 @@ class MessengerController extends Controller
     {
         $query = Favourite::where(['user_id' => Auth::user()->id, 'favourite_id' => $request->id]);
         $favoriteStatus = $query->exists(); // Bool : True, Or False : If Find
+        $user = User::where('id', $request->id)->first();
 
         if (!$favoriteStatus) {
             $star = new Favourite();
@@ -316,11 +320,12 @@ class MessengerController extends Controller
             $star->favourite_id = $request->id;
             $star->save();
 
-            return $star ? true : false;
+            return response(['status'=> 'added']);
+
         } else 
         {
             $query->delete();
-            return true;
+            return response(['status'=> 'removed']);
         }
 
     }//End Method

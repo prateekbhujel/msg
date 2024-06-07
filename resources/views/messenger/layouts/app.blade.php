@@ -52,8 +52,10 @@
 
     <script>
         const notyf = new Notyf({
-            duration: 5000,
-        });
+                duration: 5000,
+            },
+
+        );
     </script>
     
     @stack('scripts')

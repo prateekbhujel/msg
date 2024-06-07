@@ -373,7 +373,8 @@ function debounce(callback, delay) {
  * | append it to the DOM.           |
  *  ---------------------------------
 */
-function Idinfo(id) {
+function Idinfo(id)
+{
     $.ajax({
         method: 'GET',
         url: route('messenger.id-info'),
@@ -385,6 +386,10 @@ function Idinfo(id) {
         success: function (data) {
             //Fetch Messages
             fetchMessages(data.fetch.id, true);
+
+            //Fetch Favourites and handles the favorite button
+            data.favorite > 0 ? $(".favourite").addClass("active") : $(".favourite").removeClass("active");
+
             $(".messenger-header").find("img").attr("src", data.fetch.avatar);
             $(".messenger-header").find("h4").text(data.fetch.name);
 
@@ -466,6 +471,7 @@ function updateSelectedContent(user_id)
 */
 function star(user_id)
 {
+    $(".favourite").toggleClass('active');
 
     $.ajax({
         method: "POST",
@@ -475,6 +481,13 @@ function star(user_id)
             id: user_id,
         },
         success: function(data) {
+            if(data.status == 'added')
+            {
+                notyf.success('User added to favourite list.');
+            }else
+            {
+                notyf.success('User removed from favourite list.');
+            }
 
         },
         error: function(xhr, status, error){
@@ -659,6 +672,7 @@ $(document).ready(function ()
     $(".favourite").on("click", function(e){
        e.preventDefault();
        star(getMessengerId());
+
     });
 
 });//End Method

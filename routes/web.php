@@ -50,4 +50,7 @@ Route::group(['middleware' => 'auth'], function() {
 
     //Fetchs Conatcts of the logged in User: (Converstations)
     Route::get('messenger/fetch-contacts', [MessengerController::class, 'fetchContacts'])->name('messenger.fetch-contacts');
+    
+    //Updates the contacts realtime on sending the message
+    Route::get('messenger/update-contact-item',  [MessengerController::class, 'updateContactItem'])->name('messenger.update-contact-item');
 });

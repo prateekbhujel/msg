@@ -73,6 +73,8 @@ function sendMessage() {
 
             },
             success: function (data) {
+                //Update conatcts lists...
+                updateContactItem(getMessengerId());
                 const tempMsgCardElement = messageBoxContainer.find(`.message-card[data-id=${data.tempID}]`);
 
                 tempMsgCardElement.before(data.message);
@@ -403,6 +405,33 @@ function scrolllToBottom(container) {
     });
 
 }//End Method
+
+/**
+ *  ----------------------------
+ * | This function is called    |
+ * | only when the user sends   |
+ * | a new message, and in the  |
+ * | meantime it updates the    |
+ * | contact item.              |
+ *  ----------------------------
+*/
+function updateContactItem(user_id)
+{
+    $.ajax({
+        method: 'GET',
+        url : route('messenger.update-contact-item'),
+        data: { user_id: user_id },
+        success: function(data){
+
+        },
+        error: function(xhr, status, error){
+
+        }
+
+    });
+
+}//End Method
+
 
 /**
  *  ---------------

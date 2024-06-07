@@ -248,5 +248,30 @@ class MessengerController extends Controller
     } //End Method
 
 
+    /**
+     * Updates the contact item for a given user.
+     *
+     * @param \Illuminate\Http\Request $request The request containing the user ID.
+     * @return \Illuminate\Http\JsonResponse The updated contact item.
+    */
+    function updateContactItem(Request $request)
+    {
+        //Gets the User data
+        $user = User::where('id', $request->user_id)->first();
+
+        //Validating if the user cannt be find in db
+        if (!$user) {
+            return response()->json([
+                'message'   => 'User was not Found.'
+            ], 401);
+        }
+
+        $contactItem = $this->getContactItem($user);
+        return response()->json([
+            'contact_item' => $contactItem
+        ], 200);
+        
+    } //End Method
+
 
 }

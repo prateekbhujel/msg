@@ -9,9 +9,9 @@
             <h5>{{ $user->name }}</h5>
 
             @if ($lastMessage->from_id == auth()->user()->id)
-                <p><span>You</span> {{ $lastMessage->body }}</p> 
+                <p><span>You</span>{{ Str::limit($lastMessage->body, 20) }}</p> 
             @else
-                <p> {{ $lastMessage->body }}</p>
+                <p> {{ Str::limit($lastMessage->body, 20) }}</p>
             @endif
 
         </div>

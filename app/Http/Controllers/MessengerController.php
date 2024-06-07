@@ -8,6 +8,7 @@ use App\Traits\FileUploadTrait;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use phpDocumentor\Reflection\Types\Boolean;
 
 class MessengerController extends Controller
 {
@@ -276,5 +277,20 @@ class MessengerController extends Controller
 
     } //End Method
 
+
+    /**
+     * Marks all unseen messages from the given user as seen for the authenticated user.
+     *
+     * @param \Illuminate\Http\Request $request The request containing the ID of the user whose messages should be marked as seen.
+    */
+    public function makeSeen(Request $request): bool
+    {
+        Message::where('from_id', $request->id)
+            ->where('to_id', Auth::user()->id)
+            ->where('seen', 0)
+            ->update(['seen' => 1]);
+
+        return true;
+    } //End Method
 
 }

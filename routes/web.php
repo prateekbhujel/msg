@@ -53,4 +53,9 @@ Route::group(['middleware' => 'auth'], function() {
     
     //Updates the contacts realtime on sending the message
     Route::get('messenger/update-contact-item',  [MessengerController::class, 'updateContactItem'])->name('messenger.update-contact-item');
+
+    //Sets the Seen value to '0' when user clicks on the user conversation.
+    Route::post('messenger/make-seen', [MessengerController::class, 'makeSeen'])->name('messenger.make-seen');
+
+
 });

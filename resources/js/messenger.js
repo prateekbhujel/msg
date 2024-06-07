@@ -174,9 +174,14 @@ function fetchMessages(id, newFetch = false) {
                 messageBoxContainer.prepend(loader);
             },
             success: function (data) {
+                
                 //remove the loader
                 messagesLoading = false;
                 messageBoxContainer.find(".messages-loader").remove();
+
+                //Make Messages seen
+                makeSeen(true);
+
                 if (messagesPage == 1) {
 
                     messageBoxContainer.html(data.messages);
@@ -450,6 +455,30 @@ function updateSelectedContent(user_id)
 
 }//End Method
 
+/**
+ *  ---------------------
+ * | Make Messaes seen   |
+ *  ---------------------
+*/
+function makeSeen(status)
+{
+    $(`.messenger-list-item[data-id="${getMessengerId()}"]`).find('.unseen_count').remove();
+    $.ajax({
+        method: 'POST',
+        url: route('messenger.make-seen'),
+        data: {  
+            _token: csrf_token,
+            id: getMessengerId()
+        },
+        success: function(data){
+
+        },
+        error: function(xhr, status, error){
+
+        }
+    });
+
+}//End Method
 
 /**
  *  ---------------
@@ -534,7 +563,7 @@ $(document).ready(function ()
         const dataId = $(this).attr('data-id');
         
         updateSelectedContent(dataId);
-        
+
         setMessengerId(dataId);
         Idinfo(dataId);
     });

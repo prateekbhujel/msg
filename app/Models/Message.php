@@ -10,7 +10,7 @@ class Message extends Model
 {
     use HasFactory;
     
-    
+    protected $fillable = ['seen'];
     /**
      * Encrypt the message body before saving to the database.
      *

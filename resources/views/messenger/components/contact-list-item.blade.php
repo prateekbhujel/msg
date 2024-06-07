@@ -18,13 +18,15 @@
                 @if ($lastMessage->attachment)
                     <p>{{ $user->name }} sent you a photo.</p>
                 @else
-                <p> {{ Str::limit($lastMessage->body, 20) }}</p>
+                    <p>{{ Str::limit($lastMessage->body, 20) }}</p>
                     
                 @endif
             @endif
 
         </div>
             @if ($unseenCounter > 0)
-                <span class="time">{{ $unseenCounter }}</span>
+                <span class="time badge bg-danger text-light unseen_count p-2">
+                    {{ $unseenCounter }}
+                </span>
             @endif
     </div>

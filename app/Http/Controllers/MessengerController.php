@@ -203,7 +203,7 @@ class MessengerController extends Controller
             ->select('users.*', DB::raw('MAX(messages.created_at) max_created_at'))
             ->orderBy('max_created_at', 'desc')
             ->groupBy('users.id', 'users.avatar', 'users.name', 'users.user_name', 'users.email', 'users.email_verified_at', 'users.password', 'users.remember_token', 'users.created_at', 'users.updated_at')
-            ->paginate(10);
+            ->paginate(5);
 
         if (count($users) > 0) {
             $contacts = '';

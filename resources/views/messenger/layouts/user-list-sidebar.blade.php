@@ -53,7 +53,7 @@
 
     <div class="wsus__user_list_area">
         <div class="top">All Messages</div>
-        <div class="messenger-contacts">
+        <div class="wsus__user_list_area_height messenger-contacts">
 
         </div>
         <!-- <div class="wsus__user_list_liading">

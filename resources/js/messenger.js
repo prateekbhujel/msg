@@ -219,11 +219,39 @@ function getContacts()
             method: "GET",
             url: route("messenger.fetch-contacts"),
             data: {page: contactsPage},
+            beforeSend: function(){
+                contactLoading = true;
+                let loader =`
+                                <div class="text-center mt-2 contact-loader">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                </div>
+                            `;
+                messengerContactBox.append(loader);
+
+            },
             success: function(data){
-                messengerContactBox.html(data.contacts);
+                contactLoading = false;
+                messengerContactBox.find(".contact-loader").remove();
+
+                if(contactsPage < 2)
+                {
+                    messengerContactBox.html(data.contacts);
+
+                }else
+                {
+                    messengerContactBox.append(data.contacts);
+                }
+                
+                noMoreContacts =  contactsPage >= data?.last_page;
+                
+                if(!noMoreContacts) contactsPage ++;
+
             },
             error: function(xhr, status, error){
-    
+                contactLoading = false;
+                messengerContactBox.find(".contact-loader").remove();
             }
         });
     }
@@ -383,7 +411,7 @@ function scrolllToBottom(container) {
 */
 $(document).ready(function () 
 {
-    
+
     getContacts();
     
     /**
@@ -486,6 +514,17 @@ $(document).ready(function ()
         fetchMessages(getMessengerId());
 
     }, true);
+
+    /** 
+     *   -----------------------------
+     *  | Contacts Pagination method. | 
+     *   -----------------------------
+    */
+    actionOnScroll(".messenger-contacts", function () {
+
+       getContacts();
+
+    });
 
 });//End Method
 

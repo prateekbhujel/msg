@@ -60,5 +60,8 @@ Route::group(['middleware' => 'auth'], function() {
     //Sets the selected to favourite or mark unfavourite
     Route::post('messenger/favorite', [MessengerController::class, 'favorite'])->name('messenger.favorite');
 
+    //Fetchs favourite contacts of the logged in User: (Converstations)
+    Route::get('messenger/fetch-favourite', [MessengerController::class, 'fetchFavoriteList'])->name('messenger.favorite-fetch');
+
 
 });

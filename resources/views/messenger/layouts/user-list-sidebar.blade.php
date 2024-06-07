@@ -16,24 +16,7 @@
     <div class="wsus__favourite_user">
         <div class="top">favourites</div>
         <div class="row favourite_user_slider">
-            <div class="col-xl-3">
-                <a href="#" class="wsus__favourite_item">
-                    <div class="img">
-                        <img src="{{ asset('public/assets/images/author_img_1.jpg') }}" alt="User" class="img-fluid">
-                        <span class="inactive"></span>
-                    </div>
-                    <p>Mr. Jhon</p>
-                </a>
-            </div>
-            <div class="col-xl-3">
-                <a href="#" class="wsus__favourite_item">
-                    <div class="img">
-                        <img src="{{ asset('public/assets/images/author_img_2.jpg') }}" alt="User" class="img-fluid">
-                        <span class="active"></span>
-                    </div>
-                    <p>Kirshna</p>
-                </a>
-            </div>
+
         </div>
     </div>
 

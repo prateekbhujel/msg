@@ -330,4 +330,24 @@ class MessengerController extends Controller
 
     }//End Method
 
+    
+    function fetchFavoriteList(Request $request)
+    {
+        
+        $lists = Favourite::with('user:id,name,avatar')->where('user_id', Auth::user()->id)->get();
+
+        $favorites = '';
+
+        foreach ($lists as $item) 
+        {
+            $favorites.= view('messenger.components.favorite-list', compact('item'));
+
+        }
+
+        return response()->json([
+            'favorite_list' => $favorites
+        ]);
+
+    }//End Method
+
 }

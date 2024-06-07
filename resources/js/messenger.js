@@ -498,6 +498,28 @@ function star(user_id)
 }//End Method
 
 /**
+ *  ----------------------------------
+ * | Get Favorite list of the logged, |
+ * | in User.                         |
+ *  ----------------------------------
+*/
+function fetchFavoriteList(user_id)
+{
+    $.ajax({
+        method: "GET",
+        url: route("messenger.favorite-fetch"),
+        data: { },
+        success: function(data) {
+            $(".favourite_user_slider").html(data.favorite_list);
+        },
+        error: function(xhr, status, error){
+
+        }
+    });
+
+}//End Method
+
+/**
  *  ---------------------
  * | Make Messaes seen   |
  *  ---------------------
@@ -527,10 +549,12 @@ function makeSeen(status)
  * | On DOM Load   |
  *  ---------------
 */
-getContacts();
-
 $(document).ready(function () 
 {   
+    getContacts();
+
+    fetchFavoriteList();
+
     /**
      *  -------------------------------------------
      * | Hides the contact lists and shows mesages |

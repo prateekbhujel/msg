@@ -25,7 +25,9 @@ class MessengerController extends Controller
     */
     public function index()
     {
-        return view('messenger.index');
+        $favoriteList = Favourite::with('user:id,name,avatar')->where('user_id', Auth::user()->id)->get();
+
+        return view('messenger.index', compact('favoriteList'));
 
     } //End Method
 
@@ -330,24 +332,5 @@ class MessengerController extends Controller
 
     }//End Method
 
-    
-    function fetchFavoriteList(Request $request)
-    {
-        
-        $lists = Favourite::with('user:id,name,avatar')->where('user_id', Auth::user()->id)->get();
-
-        $favorites = '';
-
-        foreach ($lists as $item) 
-        {
-            $favorites.= view('messenger.components.favorite-list', compact('item'));
-
-        }
-
-        return response()->json([
-            'favorite_list' => $favorites
-        ]);
-
-    }//End Method
 
 }

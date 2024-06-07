@@ -1189,6 +1189,14 @@ button {
     width: 150px;
 }
 
+.favourite.active {
+    background-color: var(--colorPrimary) !important;
+}
+
+.favourite.active {
+   color: var(--colorWhite) !important;
+}
+
 /*================================
     Chatting Application End
 ================================*/

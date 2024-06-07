@@ -460,6 +460,31 @@ function updateSelectedContent(user_id)
 }//End Method
 
 /**
+ *  ----------------------------------
+ * | saves users to favoruite lists.   |
+ *  ----------------------------------
+*/
+function star(user_id)
+{
+
+    $.ajax({
+        method: "POST",
+        url: route("messenger.favorite"),
+        data: {  
+            _token: csrf_token,
+            id: user_id,
+        },
+        success: function(data) {
+
+        },
+        error: function(xhr, status, error){
+
+        }
+    });
+
+}//End Method
+
+/**
  *  ---------------------
  * | Make Messaes seen   |
  *  ---------------------
@@ -624,6 +649,16 @@ $(document).ready(function ()
 
        getContacts();
 
+    });
+
+    /** 
+     *   -----------------------------
+     *  | Add remove user favorite.   | 
+     *   -----------------------------
+    */
+    $(".favourite").on("click", function(e){
+       e.preventDefault();
+       star(getMessengerId());
     });
 
 });//End Method

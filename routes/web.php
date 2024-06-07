@@ -57,5 +57,8 @@ Route::group(['middleware' => 'auth'], function() {
     //Sets the Seen value to '0' when user clicks on the user conversation.
     Route::post('messenger/make-seen', [MessengerController::class, 'makeSeen'])->name('messenger.make-seen');
 
+    //Sets the selected to favourite or mark unfavourite
+    Route::post('messenger/favorite', [MessengerController::class, 'favorite'])->name('messenger.favorite');
+
 
 });

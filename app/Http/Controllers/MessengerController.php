@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Favourite;
 use App\Models\Message;
 use App\Models\User;
 use App\Traits\FileUploadTrait;
@@ -292,5 +293,36 @@ class MessengerController extends Controller
 
         return true;
     } //End Method
+
+
+    /**
+     * Toggles the favorite status of a user for a given item.
+     *
+     * If the item is not currently marked as a favorite, this method will create a new
+     * favorite record for the authenticated user and the given item. If the item is
+     * already marked as a favorite, this method will delete the existing favorite record.
+     *
+     * @param \Illuminate\Http\Request $request The request containing the ID of the item to toggle as a favorite.
+     * @return bool True if the favorite status was successfully toggled, false otherwise.
+    */
+    public function favorite(Request $request)
+    {
+        $query = Favourite::where(['user_id' => Auth::user()->id, 'favourite_id' => $request->id]);
+        $favoriteStatus = $query->exists(); // Bool : True, Or False : If Find
+
+        if (!$favoriteStatus) {
+            $star = new Favourite();
+            $star->user_id = Auth::user()->id;
+            $star->favourite_id = $request->id;
+            $star->save();
+
+            return $star ? true : false;
+        } else 
+        {
+            $query->delete();
+            return true;
+        }
+
+    }//End Method
 
 }

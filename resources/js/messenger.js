@@ -574,6 +574,21 @@ function makeSeen(status)
 }//End Method
 
 /**
+ *  ---------------------------
+ * | Initialize venobox.js     |
+ *  ---------------------------
+*/
+function initVenobox()
+{
+    $('.venobox').venobox();
+}
+
+window.Echo.private('message.' + auth_id)
+    .listen("Message", (e) => {
+        console.log(e);
+});
+
+/**
  *  ---------------
  * | On DOM Load   |
  *  ---------------

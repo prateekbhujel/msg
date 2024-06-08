@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\Message as MessageEvent;
 use App\Models\Favourite;
 use App\Models\Message;
 use App\Models\User;
@@ -9,7 +10,6 @@ use App\Traits\FileUploadTrait;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use phpDocumentor\Reflection\Types\Boolean;
 
 class MessengerController extends Controller
 {
@@ -104,7 +104,7 @@ class MessengerController extends Controller
     /**
      * Sends a message from the authenticated user to the user with the specified ID.
      *
-     * This method validates the incoming request, uploads any attached file, creates a new message, and returns a JSON response containing the message card HTML and the temporary message ID.
+     * This method is responsible for handling the process of sending a message from the authenticated user to another user. It performs several tasks, including validating the incoming request, uploading any attached file, creating a new message record, and returning a JSON response containing the message card HTML and the temporary message ID. Additionally, it dispatches a MessageEvent to notify the recipient about the new message.
      *
      * @param \Illuminate\Http\Request $request The incoming HTTP request, which must contain the ID of the recipient, the temporary message ID, and an optional file attachment.
      * @return \Illuminate\Http\JsonResponse A JSON response containing the message card HTML and the temporary message ID.
@@ -122,10 +122,14 @@ class MessengerController extends Controller
         $message->from_id = Auth::user()->id;
         $message->to_id = $request->id;
         $message->body = $request->message;
-        if ($attachmentPath) {
+
+        if ($attachmentPath)
             $message->attachment = json_encode($attachmentPath);
-        }
+        
         $message->save();
+
+        //Boradcast the message Event
+        MessageEvent::dispatch($message->body, $message->to_id);
 
         return response()->json([
             'message' => $message->attachment ? $this->messageCard($message, true) : $this->messageCard($message),

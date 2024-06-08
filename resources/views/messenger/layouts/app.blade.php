@@ -22,7 +22,7 @@
     <link rel="stylesheet" href="{{ asset('assets/css/responsive.css') }}">
     @routes
     {{-- Scripts Vite --}}
-    @vite(['resources/js/messenger.js'])
+    @vite(['resources/js/bootstrap.js', 'resources/js/messenger.js'])
 </head>
 
 <body>

@@ -440,10 +440,10 @@ function Idinfo(id)
             //Fetch Favourites and handles the favorite button
             data.favorite > 0 ? $(".favourite").addClass("active") : $(".favourite").removeClass("active");
 
-            $(".messenger-header").find("img").attr("src", data.fetch.avatar);
+            $(".messenger-header").find("img").attr("src", "public/" + data.fetch.avatar);
             $(".messenger-header").find("h4").text(data.fetch.name);
 
-            $(".messenger-info-view .user_photo").find("img").attr("src", data.fetch.avatar);
+            $(".messenger-info-view .user_photo").find("img").attr("src", "public/" + data.fetch.avatar);
             $(".messenger-info-view").find(".user_name").text(data.fetch.name);
             $(".messenger-info-view").find(".user_unique_name").text(data.fetch.user_name);
             NProgress.done();

@@ -1,7 +1,7 @@
 <div class="wsus__user_list">
     <div class="wsus__user_list_header">
         <h3>
-            <span><img src="{{ asset('public/assets/images/chat_list_icon.png') }}" alt="Chat" class="img-fluid"></span>
+            <span><img src="{{ asset('/assets/images/chat_list_icon.png') }}" alt="Chat" class="img-fluid"></span>
             {{ config('app.name') }}
         </h3>
         <span class="setting" data-bs-toggle="modal" data-bs-target="#exampleModal">

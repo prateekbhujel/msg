@@ -369,7 +369,7 @@ function debounce(callback, delay) {
 
 /**
  *  ---------------------------------
- * | Fetch Id data of the userr and  |
+ * | Fetch Id data of the user and   |
  * | append it to the DOM.           |
  *  ---------------------------------
 */
@@ -386,6 +386,17 @@ function Idinfo(id)
         success: function (data) {
             //Fetch Messages
             fetchMessages(data.fetch.id, true);
+
+            //Load gallery:
+            $(".wsus__chat_info_gallery").html("");
+            if(data?.shared_photos)
+                {
+                    $(".nothing_share").addClass("d-none");
+                    $(".wsus__chat_info_gallery").html(data.shared_photos);
+            }else
+            {
+                $(".nothing_share").removeClass("d-none");
+            }
 
             //Fetch Favourites and handles the favorite button
             data.favorite > 0 ? $(".favourite").addClass("active") : $(".favourite").removeClass("active");

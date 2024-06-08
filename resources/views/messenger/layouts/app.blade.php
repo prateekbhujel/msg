@@ -47,9 +47,9 @@
     <script src="{{ asset('public/assets/js/emojionearea.min.js') }}"></script>
     <script src="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.js"></script>
     <script src="https://unpkg.com/nprogress@0.2.0/nprogress.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <!--main/custom js-->
     <script src="{{ asset('public/assets/js/main.js') }}"></script>
-
     <script>
         const notyf = new Notyf({
                 duration: 5000,
@@ -57,7 +57,6 @@
 
         );
     </script>
-    
     @stack('scripts')
 </body>
 

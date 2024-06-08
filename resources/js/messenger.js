@@ -90,6 +90,35 @@ function sendMessage() {
     }
 
 }//End Method
+function deleteMessage()
+{
+    Swal.fire({
+        title: "Are you sure?",
+        text: "You won't be able to revert this!",
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonColor: "#3085d6",
+        cancelButtonColor: "#d33",
+        confirmButtonText: "Yes, delete it!"
+      }).then((result) => {
+        if (result.isConfirmed) {
+            $.ajax({
+                method: "DELETE",
+                url: "",
+                data: {id: id},
+                success: function(data){
+
+                },
+                error: function(xhr, status, error){
+                    console.log(error);
+                }
+            });
+         
+        }
+      });
+
+}//End Method
+
 
 /**
  *  ---------------------------------------------
@@ -684,8 +713,18 @@ $(document).ready(function ()
     $(".favourite").on("click", function(e){
        e.preventDefault();
        star(getMessengerId());
-
     });
+
+    /** 
+     *   ------------------------------------------
+     *  | Delete the selected message ,of the user |
+     *  | (One message at a time).                 | 
+     *   ------------------------------------------
+    */
+   $("body").on("click", '.dlt-message', function(e){
+        e.preventDefault();
+        deleteMessage();
+   });
 
 });//End Method
 

@@ -5,15 +5,15 @@
 */
 var temporaryMsgId = 0;
 
-const messageForm           = $(".message-form"),
-    messageInput            = $(".message-input"),
-    messageBoxContainer     = $(".wsus__chat_area_body"),
-    csrf_token              = $("meta[name=csrf_token]").attr("content"),
-    auth_id                 = $("meta[name=auth_id]").attr("content"),
-    messengerContactBox     = $(".messenger-contacts");
+const messageForm             = $(".message-form"),
+      messageInput            = $(".message-input"),
+      messageBoxContainer     = $(".wsus__chat_area_body"),
+      csrf_token              = $("meta[name=csrf_token]").attr("content"),
+      auth_id                 = $("meta[name=auth_id]").attr("content"),
+      messengerContactBox     = $(".messenger-contacts");
 
-const getMessengerId        = () => $("meta[name=id]").attr("content");
-const setMessengerId        = (id) => $("meta[name=id]").attr("content", id);
+const getMessengerId          = () => $("meta[name=id]").attr("content");
+const setMessengerId          = (id) => $("meta[name=id]").attr("content", id);
 
 /**
  *  ---------------------
@@ -90,7 +90,7 @@ function sendMessage() {
     }
 
 }//End Method
-function deleteMessage()
+function deleteMessage(message_id)
 {
     Swal.fire({
         title: "Are you sure?",
@@ -104,10 +104,21 @@ function deleteMessage()
         if (result.isConfirmed) {
             $.ajax({
                 method: "DELETE",
-                url: "",
-                data: {id: id},
-                success: function(data){
+                url: route("messenger.delete-message"),
+                data: {
+                    message_id: message_id,
+                    _token : csrf_token
+                },
+                beforeSend: function()
+                {
+                    $(`.message-card[data-id="${message_id}"]`).remove();
 
+                },
+                success: function(data)
+                {
+                    notyf.success(data.message);
+                    //Update conatcts lists...
+                    updateContactItem(getMessengerId());
                 },
                 error: function(xhr, status, error){
                     console.log(error);
@@ -140,7 +151,6 @@ function sendTempMessageCard(message, tempId, attachemnt = false) {
                             ${message.trim().length > 0 ? `<p class="messages">${message}</p>` : ''}
 
                             <span class="clock"><i class="fas fa-clock"></i> sending</span>
-                            <a class="action" href="#"><i class="fas fa-trash"></i></a>
                         </div>
                     </div>
                 `;
@@ -723,7 +733,8 @@ $(document).ready(function ()
     */
    $("body").on("click", '.dlt-message', function(e){
         e.preventDefault();
-        deleteMessage();
+        let msg_id = $(this).data('msgid');
+        deleteMessage(msg_id);
    });
 
 });//End Method

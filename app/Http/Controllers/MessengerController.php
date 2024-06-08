@@ -348,5 +348,22 @@ class MessengerController extends Controller
 
     }//End Method
 
+    //Deletes the message with the given ID.(Cannot delete other message one at a time)
+    public function deleteMessage(Request $request)
+    {
+        $message = Message::findOrFail($request->message_id);
+        
+        if($message->from_id == Auth::user()->id)
+        {
+            $message->delete();
+            return response()->json([
+                'id'        => $request->message_id,
+                'message'   => 'Message Deleted Successfully',
+                // 'status'    => 'deleted',
+            ], 200);
+        }
 
+        return;
+
+    }//End Method
 }

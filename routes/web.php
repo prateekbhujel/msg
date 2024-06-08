@@ -60,4 +60,7 @@ Route::group(['middleware' => 'auth'], function() {
     //Sets the selected to favourite or mark unfavourite
     Route::post('messenger/favorite', [MessengerController::class, 'favorite'])->name('messenger.favorite');
 
+    //Deletes the message of the logged in user from the database
+    Route::delete('messenger/delete-message', [MessengerController::class, 'deleteMessage'])->name('messenger.delete-message');
+
 });

@@ -10,8 +10,17 @@ class UserProfileController extends Controller
 {
     use FileUploadTrait;
     
-    /**
-     * Update the user's profile information after verification.
+    /*
+    |--------------------------------------------------------------------------
+    | Update Function
+    |--------------------------------------------------------------------------
+    |
+    | This Function is responsible for handling user profile updates
+    | before saving the updated data to the database, it first checks,
+    | file and size and checks, if the user_name is unique and
+    | if the user_name is valid and passes the validation rules.
+    | Then save the data into the database.
+    |
     */
     public function update(Request $request)
     {

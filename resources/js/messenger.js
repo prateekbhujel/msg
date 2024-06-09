@@ -619,10 +619,22 @@ function initVenobox()
 }
 
 /**
- *  ------------------------------
- * | Boradcasting Listener that,  |
- * | listens to the event.        |
- *  ------------------------------ 
+ *  ---------------------------
+ * | Play Message Sound.       |
+ *  ---------------------------
+*/
+function playNotficationSound()
+{
+    const sound = new Audio(`public/default/message-sound.mp3`);
+    console.log(sound);
+    sound.play();
+}
+
+/**
+ *  --------------------------------
+ * | Boradcasting Listener that,    |
+ * | listens to the Message channel.|
+ *  --------------------------------
 */
 window.Echo.private('message.' + auth_id)
     .listen("Message", (e) => {
@@ -631,6 +643,7 @@ window.Echo.private('message.' + auth_id)
         if(getMessengerId() != e.from_id)
         {
             updateContactItem(e.from_id);
+            playNotficationSound();
         }
     
         let message = receiveMessageCard(e);
@@ -639,7 +652,28 @@ window.Echo.private('message.' + auth_id)
             messageBoxContainer.append(message);
             scrolllToBottom(messageBoxContainer);
         }
-});
+
+});//End Method
+
+/** 
+ *  ---------------------------------------
+ *  | Listens to the User Presence Channel.|
+ *  ---------------------------------------
+*/
+window.Echo.join('online')
+    .here((users) => {
+
+        console.log(users);
+
+}).joining((user) => {
+
+    console.log(user);
+
+}).leaving((user) => {
+
+    console.log(user);
+
+});//End Method
 
 /**
  *  ---------------

@@ -32,8 +32,10 @@ Route::middleware('auth')->group(function () {
 
 require __DIR__.'/auth.php';
 
+//Start of Messenger Routes
 Route::group(['middleware' => 'auth'], function() {
     Route::get('messenger', [MessengerController::class, 'index'])->name('home');
+
     Route::post('profile', [UserProfileController::class, 'update'])->name('profile.update');
 
     //User Search Route
@@ -63,4 +65,4 @@ Route::group(['middleware' => 'auth'], function() {
     //Deletes the message of the logged in user from the database
     Route::delete('messenger/delete-message', [MessengerController::class, 'deleteMessage'])->name('messenger.delete-message');
 
-});
+});//End Of Messenger Routes

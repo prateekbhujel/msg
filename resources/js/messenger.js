@@ -663,7 +663,6 @@ window.Echo.private('message.' + auth_id)
 window.Echo.join('online')
     .here((users) => {
 
-        console.log(users);
         $.each(users, function(index, user){
             
             let contactItem = $(`.messenger-list-item[data-id="${user.id}"]`).find('.img').find('span');
@@ -673,12 +672,16 @@ window.Echo.join('online')
         });
 
 }).joining((user) => {
-
-    // console.log(user);
+    
+    let contactItem = $(`.messenger-list-item[data-id="${user.id}"]`).find('.img').find('span');
+    contactItem.removeClass('inactive');
+    contactItem.addClass('active');
 
 }).leaving((user) => {
 
-    // console.log(user);
+    let contactItem = $(`.messenger-list-item[data-id="${user.id}"]`).find('.img').find('span');
+    contactItem.removeClass('active');
+    contactItem.addClass('inactive');
 
 });//End Method
 

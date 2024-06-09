@@ -15,15 +15,13 @@ class Message implements ShouldBroadcast
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
     public $message;
-    public $receiver_id;
 
     /**
      * Create a new event instance.
      */
-    public function __construct($message, $receiver_id)
+    public function __construct($message)
     {
-        $this->message = $message;
-        $this->receiver_id = $receiver_id;  
+        $this->message = $message; 
 
     }//End Method
 
@@ -36,7 +34,7 @@ class Message implements ShouldBroadcast
     public function broadcastOn(): array
     {
         return [
-            new PrivateChannel('message.' . $this->receiver_id), // Example: 'message.1' or 'message.2' or so on...
+            new PrivateChannel('message.' . $this->message->to_id), // Example: 'message.1' or 'message.2' or so on...
         ];
     }
 
@@ -49,9 +47,11 @@ class Message implements ShouldBroadcast
     public function broadcastWith(): array
     {
         return [
-            'message'       => $this->message,
-            'receiver_id'   => $this->receiver_id,
-            'auth_id'       => auth()->user()->id,
+            'id'            => $this->message->id,
+            'body'          => $this->message->body,
+            'to_id'         => $this->message->to_id,
+            'attachment'    => $this->message->attachment,
+            'from_id'       => auth()->user()->id,
         ];
         
     } //End Method

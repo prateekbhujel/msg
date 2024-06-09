@@ -10,6 +10,7 @@ const messageForm             = $(".message-form"),
       messageBoxContainer     = $(".wsus__chat_area_body"),
       csrf_token              = $("meta[name=csrf_token]").attr("content"),
       auth_id                 = $("meta[name=auth_id]").attr("content"),
+      url                     = $("meta[name=url]").attr("content"),
       messengerContactBox     = $(".messenger-contacts");
 
 const getMessengerId          = () => $("meta[name=id]").attr("content");
@@ -165,6 +166,40 @@ function sendTempMessageCard(message, tempId, attachemnt = false) {
                     </div>
                 `;
     }
+
+}//End Method
+
+/**
+ *  ---------------------------------------------
+ * | Generates an HTML string representing a     |
+ * | received message card for a chat interface. |
+ *  ---------------------------------------------
+*/
+function receiveMessageCard(e) 
+{
+    if (e.attachemnt) {
+        return `
+                    <div class="wsus__single_chat_area message-card" data-id="${e.id}">
+                        <div class="wsus__single_chat">
+                            <a class="venobox" data-gall="gallery${e.id}" href="${url + e.attachemnt}">
+                                <img src="${url + e.attachemnt}" alt="gallery1" class="img-fluid w-100">
+                            </a>
+                            
+                            ${e.body.trim().length > 0 ? `<p class="messages">${e.body}</p>` : ''}
+                        </div>
+                    </div>
+                `;
+
+    } else {
+        return `
+                    <div class="wsus__single_chat_area message-card" data-id="${e.id}">
+                        <div class="wsus__single_chat">
+                            <p class="messages">${e.body}</p>
+                        </div>
+                    </div>
+                `;
+    }
+
 
 }//End Method
 
@@ -583,9 +618,21 @@ function initVenobox()
     $('.venobox').venobox();
 }
 
+/**
+ *  ------------------------------
+ * | Boradcasting Listener that,  |
+ * | listens to the event.        |
+ *  ------------------------------ 
+*/
 window.Echo.private('message.' + auth_id)
     .listen("Message", (e) => {
-        console.log(e);
+        let message = receiveMessageCard(e);
+
+        if(getMessengerId() == e.from_id)
+        {
+            messageBoxContainer.append(message);
+            scrolllToBottom(messageBoxContainer);
+        }
 });
 
 /**

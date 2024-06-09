@@ -6,7 +6,7 @@
 
     <div class="wsus__single_chat_area  message-card" data-id="{{ $message->id }}">
         <div class="wsus__single_chat {{ $message->from_id === auth()->user()->id ? 'chat_right' : '' }}">
-            <a class="venobox" data-gall="gallery01" href="{{ asset($imagePath) }}">
+            <a class="venobox" data-gall="gallery{{ $message->id }}" href="{{ asset($imagePath) }}">
                 <img src="{{ asset($imagePath) }}" alt="gallery1" class="img-fluid w-100">
             </a>
 

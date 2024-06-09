@@ -21,6 +21,6 @@ Broadcast::channel('message.{id}', function ($user, $id) {
 //User Presence Broadcast Channel
 Broadcast::channel('online', function($user){
     
-    return $user;
+    return $user->only('id');
 
 });//End Channel

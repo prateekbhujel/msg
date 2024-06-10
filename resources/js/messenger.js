@@ -523,7 +523,14 @@ function updateContactItem(user_id)
             success: function(data){
                 messengerContactBox.find(`.messenger-list-item[data-id="${user_id}"]`).remove();
                 messengerContactBox.prepend(data.contact_item);
-                
+                // Adding (+) -- Infornt of the vairable 
+                // sets or makes it integer
+                if(activeUsersIds.includes(+user_id)){
+                   userActive(user_id);
+                }else{
+                    userInactive(user_id);
+                }
+
                 if(user_id == getMessengerId()) updateSelectedContent(user_id);
     
             },
@@ -677,19 +684,43 @@ window.Echo.join('online')
     //Adding new user to the active users array
     addNewUserId(user.id);
     console.log(activeUsersIds);
-    let contactItem = $(`.messenger-list-item[data-id="${user.id}"]`).find('.img').find('span');
-    contactItem.removeClass('inactive');
-    contactItem.addClass('active');
+    userActive(user.id);
 
 }).leaving((user) => {
     //Removing user from the active users array
     removeUserId(user.id);
     console.log(activeUsersIds);
-    let contactItem = $(`.messenger-list-item[data-id="${user.id}"]`).find('.img').find('span');
+    userInactive(user.id);
+
+});//End Method
+
+/**
+ *  -----------------------------------
+ * | Cheks the id of the user and if   |
+ * | active sets the class active.     |
+ *  -----------------------------------
+*/
+function userActive(id)
+{
+    let contactItem = $(`.messenger-list-item[data-id="${id}"]`).find('.img').find('span');
+    contactItem.removeClass('inactive');
+    contactItem.addClass('active');
+
+}//End Method
+
+/**
+ *  ------------------------------------
+ * | Cheks the id of the user and if    |
+ * | active sets the class inactive.    |
+ *  ------------------------------------
+*/
+function userInactive(id)
+{
+    let contactItem = $(`.messenger-list-item[data-id="${id}"]`).find('.img').find('span');
     contactItem.removeClass('active');
     contactItem.addClass('inactive');
 
-});//End Method
+}//End Method
 
 /**
  *  -----------------------------------

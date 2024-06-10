@@ -331,6 +331,9 @@ function getContacts()
                 
                 if(!noMoreContacts) contactsPage ++;
 
+                //Cheks either the user is activate on pagination or not and set active class.
+                updateUserActiveList();
+
             },
             error: function(xhr, status, error){
                 contactLoading = false;
@@ -693,6 +696,24 @@ window.Echo.join('online')
     userInactive(user.id);
 
 });//End Method
+
+
+/**
+ *  ------------------------------------------------
+ * | cheks the id in user lists while pagination,    |
+ * | Makes the user active.                          |
+ *  -------------------------------------------------
+*/
+function updateUserActiveList()
+{
+    $('.messenger-list-item').each(function(index, value){
+        let id = $(this).data('id');
+
+        if(activeUsersIds.includes(+id)) userActive(id);
+
+    });
+
+}//End Method
 
 /**
  *  -----------------------------------

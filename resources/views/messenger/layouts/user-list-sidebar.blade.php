@@ -1,13 +1,29 @@
 <div class="wsus__user_list">
     <div class="wsus__user_list_header">
         <h3>
-            <span><img src="{{ asset('/assets/images/chat_list_icon.png') }}" alt="Chat" class="img-fluid"></span>
+            <span><img src="{{ asset('assets/images/chat_list_icon.png') }}" alt="Chat" class="img-fluid"></span>
             {{ config('app.name') }}
         </h3>
-        <span class="setting" data-bs-toggle="modal" data-bs-target="#exampleModal">
-            <i class="fas fa-user-cog"></i>
-        </span>
+        <div class="d-flex">
+            <form method="POST" action="{{ route('logout') }}">
+                @csrf
+
+                <a href="route('logout')" onclick="event.preventDefault(); this.closest('form').submit();"
+                style="padding-right: 4px;"
+                >
+                    <span class="setting">
+                        <i class="fas fa-sign-out-alt" style="color:rgb(193, 9, 9);"></i>
+                    </span>
+                </a>
+            </form>
+
+            <span class="setting" data-bs-toggle="modal" data-bs-target="#exampleModal">
+                <i class="fas fa-user-cog"></i>
+            </span>
+        </div>
+
         @include('messenger.layouts.profile-modal')
+
     </div>
     
     {{-- search form --}}

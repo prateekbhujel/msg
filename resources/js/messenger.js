@@ -4,6 +4,7 @@
  *  ------------------
 */
 var temporaryMsgId = 0;
+var activeUsersIds = [];
 
 const messageForm             = $(".message-form"),
       messageInput            = $(".message-input"),
@@ -662,9 +663,10 @@ window.Echo.private('message.' + auth_id)
 */
 window.Echo.join('online')
     .here((users) => {
-
+        //Set Active Users Ids
+        setActiveUsersIds(users);
+        console.log(activeUsersIds);
         $.each(users, function(index, user){
-            
             let contactItem = $(`.messenger-list-item[data-id="${user.id}"]`).find('.img').find('span');
             contactItem.removeClass('inactive');
             contactItem.addClass('active');
@@ -672,18 +674,64 @@ window.Echo.join('online')
         });
 
 }).joining((user) => {
-    
+    //Adding new user to the active users array
+    addNewUserId(user.id);
+    console.log(activeUsersIds);
     let contactItem = $(`.messenger-list-item[data-id="${user.id}"]`).find('.img').find('span');
     contactItem.removeClass('inactive');
     contactItem.addClass('active');
 
 }).leaving((user) => {
-
+    //Removing user from the active users array
+    removeUserId(user.id);
+    console.log(activeUsersIds);
     let contactItem = $(`.messenger-list-item[data-id="${user.id}"]`).find('.img').find('span');
     contactItem.removeClass('active');
     contactItem.addClass('inactive');
 
 });//End Method
+
+/**
+ *  -----------------------------------
+ * | Set Active Users id to an array   |
+ *  -----------------------------------
+*/
+function setActiveUsersIds(users)
+{
+    $.each(users, function(index, user){
+        activeUsersIds.push(user.id);
+    });
+
+}//End Method
+
+
+/**
+ *  -------------------------------
+ * | Add New User id to an array   |
+ *  -------------------------------
+*/
+function addNewUserId(id)
+{
+    activeUsersIds.push(id);
+
+}
+
+
+/**
+ *  -------------------------------
+ * | Remove User id to an array.   |
+ *  -------------------------------
+*/
+function removeUserId(id)
+{
+    let index = activeUsersIds.indexOf(id);
+
+    if(index !== -1){
+        activeUsersIds.splice(index, 1);
+    }
+
+}
+
 
 /**
  *  ---------------

@@ -187,11 +187,11 @@ function receiveMessageCard(e)
         return `
                     <div class="wsus__single_chat_area message-card" data-id="${e.id}">
                         <div class="wsus__single_chat">
-                            <a class="venobox" data-gall="gallery${e.id}" href="${url + e.attachment}">
-                                <img src="${url + e.attachment}" alt="gallery1" class="img-fluid w-100">
+                            <a class="venobox" data-gall="gallery${e.id}" href="${e.attachment}">
+                                <img src="${e.attachment}" alt="gallery1" class="img-fluid w-100">
                             </a>
                             
-                            ${e.body.trim().length > 0 ? `<p class="messages">${e.body}</p>` : ''}
+                            ${e.body != null && e.body.trim().length > 0 ? `<p class="messages">${e.body}</p>` : ''}
                         </div>
                     </div>
                 `;

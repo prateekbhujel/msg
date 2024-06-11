@@ -8,7 +8,7 @@
             <form method="POST" action="{{ route('logout') }}">
                 @csrf
 
-                <a href="route('logout')" onclick="event.preventDefault(); this.closest('form').submit();"
+                <a href="javascript:void(0)" onclick="event.preventDefault(); this.closest('form').submit();"
                 style="padding-right: 4px;"
                 >
                     <span class="setting">
@@ -68,11 +68,5 @@
         <div class="wsus__user_list_area_height messenger-contacts">
 
         </div>
-        <!-- <div class="wsus__user_list_liading">
-            <div class="spinner-border text-light" role="status">
-                <span class="visually-hidden">Loading...</span>
-            </div>
-        </div> -->
-
     </div>
 </div>

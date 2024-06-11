@@ -113,36 +113,4 @@ $(function () {
         $(".wsus__chat_app").addClass("show_small_chat");
     });
 
-
-
-
-
-
-
-
-    // Heght adjustment
-    $(document).ready(function () {
-        function adjustHeight() {
-            var windowHeight = $(window).height() - 120;
-            $('.wsus__chat_area_body').css('height', windowHeight + 'px');
-            $('.wsus__user_list_area_height').css({
-                'max-height': windowHeight - 250 + 'px',
-            });
-        }
-
-        // Call the function initially
-        adjustHeight();
-
-        // Call the function whenever the window is resized
-        $(window).resize(function () {
-            adjustHeight();
-        });
-    });
-
-
-
-
-
-
-
 });

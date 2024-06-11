@@ -17,13 +17,14 @@
                     <span class="back_to_list">
                         <i class="fas fa-arrow-left"></i>
                     </span>
-                    <img src="" alt="User" class="img-fluid">
+                    <img src="" alt="User-Image" class="img-fluid">
                     <h4></h4>
                 </div>
                 <div class="header_right">
-                    <a href="" class="favourite"><i class="fas fa-star"></i></a>
-                    <a href="#" class="go_home"><i class="fas fa-home"></i></a>
-                    <a href="#" class="info"><i class="fas fa-info-circle"></i></a>
+                    <a href="javascript:void(0)" class="favourite"><i class="fas fa-star"></i></a>
+                    {{-- <a href="javascript:void(0)" class="info"><i class="fas fa-phone"></i></a>
+                    <a href="javascript:void(0)" class="info"><i class="fas fa-video"></i></a> --}}
+                    <a href="javascript:void(0)" class="info"><i class="fas fa-info-circle"></i></a>
                 </div>
             </div>
  
@@ -37,7 +38,7 @@
                         <img src="" alt="User" class="img-fluid attachment-preview">
                         <span class="cancel-attachment"><i class="far fa-times"></i></span>
                     </div>
-                    <form action="#" class="message-form" enctype="multipart/form-data">
+                    <form class="message-form" enctype="multipart/form-data">
                         <div class="file">
                             <label for="file"><i class="far fa-plus"></i></label>
                             <input id="file" class="attachment-input" name="attachment" type="file" hidden accept="image/*">

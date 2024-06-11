@@ -949,6 +949,38 @@ $(document).ready(function ()
         deleteMessage(msg_id);
    });
 
+    /**
+     *  --------------------------
+     * | Custom Height adjustment |
+     *  --------------------------
+    */
+    function adjustHeight() 
+    {
+        var windowHeight = $(window).height();
+        $('.wsus__chat_area_body').css('height', (windowHeight-120) + 'px');
+        $('.messenger-contacts').css('max-height', (windowHeight - 393) + 'px');
+        $('.wsus__chat_info_gallery').css('height', (windowHeight - 360) + 'px');
+        $('.user_search_list_result').css({
+            'height': (windowHeight - 130) + 'px',
+        }); 
+    }
+
+    /**
+     *  -----------------------------
+     * | Window load event listener. |
+     *  -----------------------------
+    */
+    adjustHeight();
+
+    /** 
+     *  --------------------------------
+     * | Window resize event listener.  |
+     *  --------------------------------
+    */
+    $(window).resize(function () {
+        adjustHeight();
+    });
+
 });//End Method
 
 

@@ -352,22 +352,36 @@ class MessengerController extends Controller
 
     }//End Method
 
-    //Deletes the message with the given ID.(Cannot delete other message one at a time)
+    /**
+     * Deletes a message from the authenticated user's message history.
+     *
+     * This method first checks if the message being deleted belongs to the authenticated user. If so, it will delete the message and any associated attachment file. If the message does not belong to the authenticated user, the method will return without taking any action.
+     *
+     * @param \Illuminate\Http\Request $request The request containing the ID of the message to be deleted.
+     * @return \Illuminate\Http\JsonResponse A JSON response indicating the success of the delete operation.
+     */
     public function deleteMessage(Request $request)
     {
         $message = Message::findOrFail($request->message_id);
-        
-        if($message->from_id == Auth::user()->id)
-        {
+
+        if ($message->from_id == Auth::user()->id) {
+            if ($message->attachment != null) {
+                // Construct the full path using public_path and replace escaped forward slashes
+                $attachmentPath = public_path(str_replace(['\/', '"'], ['/', ''], $message->attachment));
+                // dd($attachmentPath);
+                if (file_exists($attachmentPath)) {
+                    unlink($attachmentPath);
+                }
+            }
+
             $message->delete();
             return response()->json([
                 'id'        => $request->message_id,
                 'message'   => 'Message Deleted Successfully',
-                // 'status'    => 'deleted',
             ], 200);
         }
 
         return;
-
-    }//End Method
+    }
+    
 }

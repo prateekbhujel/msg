@@ -3,7 +3,7 @@ aria-hidden="true">
 <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
         <div class="modal-body">
-            <form action="#" class="profile-form" enctype="multipart/form-data" autocomplete="off">
+            <form class="profile-form" enctype="multipart/form-data" autocomplete="off">
                 @csrf
 
                 <div class="file profile-file">

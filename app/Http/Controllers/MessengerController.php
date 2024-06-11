@@ -184,12 +184,12 @@ class MessengerController extends Controller
             $name = User::where('id', $request->id)->first()->name;
 
             $response['messages'] = "<div class='d-flex justify-content-center align-items-center h-100'>
-                                            <p class='text-muted'>
+                                            <p class='text-muted no_messages'>
                                                 Oops, No Messages Here 😥 !!
                                             </p>
                                         </div>
                                         <div class='d-flex justify-content-center align-items-center mb-4'>
-                                            <p class='text-muted fst-italic mt-2'>
+                                            <p class='text-muted fst-italic mt-2 no_messages'>
                                                 Say 'Hey 🖐️' to {$name} and start the conversation!!
                                             </p>
                                         </div>
@@ -241,7 +241,7 @@ class MessengerController extends Controller
                 $contacts .= $this->getContactItem($user);
             }
         } else {
-            $contacts = "<p>Your Contacts list is empty! </p>";
+            $contacts = "<p class='text text-muted text-center mt-5'>Your Contacts list is empty! 😥 </p>";
         }
 
         return response()->json([

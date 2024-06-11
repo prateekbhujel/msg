@@ -626,7 +626,7 @@ button {
     width: 100%;
     height: 100%;
     background: #ffff !important;
-    z-index: 9999;
+    z-index: 11;
 }
 
 .select_a_user {
@@ -913,7 +913,15 @@ button {
     position: relative;
 }
 
+
 .wsus__chat_area_footer form .file {
+    position: absolute;
+    left: 10px;
+    top: 8px;
+}
+
+.wsus__chat_area_footer form .file label {
+    cursor: pointer;
     width: 35px;
     height: 35px;
     background: var(--colorPrimary);
@@ -927,12 +935,9 @@ button {
     -moz-transition: all linear .3s;
     -ms-transition: all linear .3s;
     -o-transition: all linear .3s;
-    position: absolute;
-    left: 10px;
-    top: 8px;
 }
 
-.wsus__chat_area_footer form .file:hover {
+.wsus__chat_area_footer form .file label:hover {
     background: var(--colorBlack);
     color: var(--colorLightBg);
 }
@@ -1179,25 +1184,29 @@ button {
     font-size: 11px;
 }
 
-/** Custom Css **/
-.img-fluid.profile-image-preview{
+
+/** Custom Css*/
+
+.img-fluid.profile-image-preview {
     height: 135px !important;
     width: 135px !important;
     object-fit: cover !important;
 }
 
-.profile-file{
-    height: 150px;
-    width: 150px;
+.profile-file {
+    height: 150px !important;
+    width: 150px !important;
 }
 
 .favourite.active {
-    background-color: var(--colorPrimary) !important;
+    background: var(--colorPrimary) !important;
 }
 
-.favourite.active {
-   color: var(--colorWhite) !important;
+.favourite.active i{
+    color: var(--colorWhite) !important;
 }
+
+
 /*================================
     Chatting Application End
 ================================*/

@@ -72,6 +72,8 @@ function sendMessage()
                     messageBoxContainer.append(sendTempMessageCard(inputValue, tempID));
                 }
 
+                $('.no_messages').addClass('d-none');
+
                 scrolllToBottom(messageBoxContainer);
                 messageFormReset();
 
@@ -87,7 +89,7 @@ function sendMessage()
                 initVenobox();
             },
             error: function (xhr, status, error) {
-                console.log(error);
+                // console.log(error);
             }
         });
 
@@ -125,7 +127,7 @@ function deleteMessage(message_id)
                     updateContactItem(getMessengerId());
                 },
                 error: function(xhr, status, error){
-                    console.log(error);
+                    // console.log(error);
                 }
             });
          
@@ -285,9 +287,7 @@ function fetchMessages(id, newFetch = false)
 
                 disableChatBoxLoader();
             },
-            error: function (xhr, status, error) {
-
-            }
+            error: function (xhr, status, error) {}
         });
     }
 
@@ -546,9 +546,7 @@ function updateContactItem(user_id)
                 if(user_id == getMessengerId()) updateSelectedContent(user_id);
     
             },
-            error: function(xhr, status, error){
-    
-            }
+            error: function(xhr, status, error){}
     
         });
     }
@@ -681,7 +679,7 @@ window.Echo.join('online')
     .here((users) => {
         //Set Active Users Ids
         setActiveUsersIds(users);
-        console.log(activeUsersIds);
+        // console.log(activeUsersIds);
         $.each(users, function(index, user){
             let contactItem = $(`.messenger-list-item[data-id="${user.id}"]`).find('.img').find('span');
             contactItem.removeClass('inactive');
@@ -692,13 +690,13 @@ window.Echo.join('online')
 }).joining((user) => {
     //Adding new user to the active users array
     addNewUserId(user.id);
-    console.log(activeUsersIds);
+    // console.log(activeUsersIds);
     userActive(user.id);
 
 }).leaving((user) => {
     //Removing user from the active users array
     removeUserId(user.id);
-    console.log(activeUsersIds);
+    // console.log(activeUsersIds);
     userInactive(user.id);
 
 });//End Method

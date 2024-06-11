@@ -12,13 +12,13 @@
                 @if ($lastMessage->attachment)
                     <p><span>You: </span>sent a photo. </p> 
                 @else
-                    <p><span>You:</span>{{ Str::limit($lastMessage->body, 20) }}</p>
+                    <p><span>You:</span>{{ truncate($lastMessage->body) }}</p>
                 @endif 
             @else
                 @if ($lastMessage->attachment)
                     <p>{{ $user->name }} sent you a photo.</p>
                 @else
-                    <p>{{ Str::limit($lastMessage->body, 20) }}</p>
+                    <p>{{ truncate($lastMessage->body) }}</p>
                     
                 @endif
             @endif

@@ -1106,10 +1106,6 @@ button {
     display: none;
 }
 
-.favourite_user_slider {
-    /* margin: 0; */
-}
-
 .nextArrow,
 .prevArrow {
     position: absolute;

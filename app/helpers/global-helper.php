@@ -45,3 +45,18 @@
         } //End Method
 
     }
+
+    /**
+     * Truncates a string to a specified length, appending an ellipsis if the string is longer than the limit.
+     *
+     * @param string $string The string to truncate.
+     * @param int $limit The maximum length of the string, default is 18.
+     * @param string $end The string to append if the original string is truncated, default is '...'.
+     * @return string The truncated string.
+     */
+    if (!function_exists('truncate')) {
+        function truncate($string, $limit = 18, $end = '...')
+        {
+            return \Illuminate\Support\Str::limit($string, $limit, $end);
+        }
+    }

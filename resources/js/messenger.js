@@ -44,7 +44,8 @@ function imagePreview(input, selector) {
     }
 
 }//End Method
-function sendMessage() {
+function sendMessage() 
+{
     temporaryMsgId += 1;
     let tempID = `temp_${temporaryMsgId}`; //temp_1, temp_2 ....
     let hasAttachment = !!$(".attachment-input").val();
@@ -64,7 +65,7 @@ function sendMessage() {
             processData: false,
             contentType: false,
             beforeSend: function () {
-                //add temp message on dom
+                //Add temp message on dom
                 if (hasAttachment) {
                     messageBoxContainer.append(sendTempMessageCard(inputValue, tempID, true));
                 } else {
@@ -76,13 +77,14 @@ function sendMessage() {
 
             },
             success: function (data) {
+                makeSeen(true);
                 //Update conatcts lists...
                 updateContactItem(getMessengerId());
                 const tempMsgCardElement = messageBoxContainer.find(`.message-card[data-id=${data.tempID}]`);
 
                 tempMsgCardElement.before(data.message);
                 tempMsgCardElement.remove();
-
+                initVenobox();
             },
             error: function (xhr, status, error) {
                 console.log(error);
@@ -139,7 +141,8 @@ function deleteMessage(message_id)
  * | temporary message card for a chat interface.|
  *  ---------------------------------------------
 */
-function sendTempMessageCard(message, tempId, attachemnt = false) {
+function sendTempMessageCard(message, tempId, attachemnt = false) 
+{
     if (attachemnt) {
         return `
                     <div class="wsus__single_chat_area message-card" data-id="${tempId}">
@@ -209,10 +212,13 @@ function receiveMessageCard(e)
  * | Resets the message from dom or Form |
  *  -------------------------------------
 */
-function messageFormReset() {
+function messageFormReset() 
+{
     $(".attachment-block").addClass("d-none");
+    
     $(".emojionearea-editor").text("");
-    messageForm.trigger("reset");
+    
+    $("input[type='file']").val(null);
 
 }//End Method
 
@@ -224,7 +230,8 @@ function messageFormReset() {
 let messagesPage = 1;
 let noMoreMessages = false;
 let messagesLoading = false;
-function fetchMessages(id, newFetch = false) {
+function fetchMessages(id, newFetch = false) 
+{
     if (newFetch) {
         messagesPage = 1;
         noMoreMessages = false;
@@ -432,7 +439,8 @@ function actionOnScroll(selector, callback, topScroll = false) {
  * | called after a specified delay. |
  *  ---------------------------------
 */
-function debounce(callback, delay) {
+function debounce(callback, delay) 
+{
     let timerId;
 
     return function (...args) {
@@ -499,7 +507,8 @@ function Idinfo(id)
  * | Slide to bottom on action. |
  *  ----------------------------
 */
-function scrolllToBottom(container) {
+function scrolllToBottom(container) 
+{
     $(container).stop().animate({
         scrollTop: $(container)[0].scrollHeight
     });
@@ -609,12 +618,9 @@ function makeSeen(status)
             _token: csrf_token,
             id: getMessengerId()
         },
-        success: function(data){
+        success: function(data){},
+        error: function(xhr, status, error){}
 
-        },
-        error: function(xhr, status, error){
-
-        }
     });
 
 }//End Method

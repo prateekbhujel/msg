@@ -533,6 +533,9 @@ function updateContactItem(user_id)
             url : route('messenger.update-contact-item'),
             data: { user_id: user_id },
             success: function(data){
+                if(messageBoxContainer.find('.no_contact')){
+                    messengerContactBox.find('p').remove();
+                }
                 messengerContactBox.find(`.messenger-list-item[data-id="${user_id}"]`).remove();
                 messengerContactBox.prepend(data.contact_item);
                 // Adding (+) -- Infornt of the vairable 
@@ -875,6 +878,7 @@ $(document).ready(function ()
 
         setMessengerId(dataId);
         Idinfo(dataId);
+        messageFormReset();
     });
 
     /**
@@ -963,7 +967,7 @@ $(document).ready(function ()
         var windowHeight = $(window).height();
         $('.wsus__chat_area_body').css('height', (windowHeight-120) + 'px');
         $('.messenger-contacts').css('max-height', (windowHeight - 393) + 'px');
-        $('.wsus__chat_info_gallery').css('height', (windowHeight - 360) + 'px');
+        $('.wsus__chat_info_gallery').css('height', (windowHeight - 400) + 'px');
         $('.user_search_list_result').css({
             'height': (windowHeight - 130) + 'px',
         }); 

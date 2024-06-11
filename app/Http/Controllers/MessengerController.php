@@ -241,7 +241,7 @@ class MessengerController extends Controller
                 $contacts .= $this->getContactItem($user);
             }
         } else {
-            $contacts = "<p class='text text-muted text-center mt-5'>Your Contacts list is empty! 😥 </p>";
+            $contacts = "<p class='text text-muted text-center mt-5 no_contact'>Your Contacts list is empty! 😥 </p>";
         }
 
         return response()->json([

@@ -128,8 +128,10 @@ class MessengerController extends Controller
         
         $message->save();
 
-        //Boradcast the message Event
-        MessageEvent::dispatch($message);
+        //Boradcast the message Event only if the 
+        //user is sending someone else not themselves
+        if(auth()->user()->id != $request->id)
+            MessageEvent::dispatch($message);
 
         return response()->json([
             'message' => $message->attachment ? $this->messageCard($message, true) : $this->messageCard($message),
@@ -206,6 +208,7 @@ class MessengerController extends Controller
         $response['messages'] = $allMessages;
 
         return response()->json($response);
+
     } //End Method
 
 
@@ -317,6 +320,7 @@ class MessengerController extends Controller
             ->update(['seen' => 1]);
 
         return true;
+        
     } //End Method
 
 

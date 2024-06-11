@@ -5,8 +5,8 @@
     @endphp
 
     <div class="wsus__single_chat_area  message-card" data-id="{{ $message->id }}">
-        <div class="wsus__single_chat {{ $message->from_id === auth()->user()->id ? 'chat_right' : '' }}">
-            <a class="venobox" data-gall="gallery{{ $message->id }}" href="{{ asset($imagePath) }}">
+        <div class="wsus__single_chat {{ $message->from_id == auth()->user()->id ? 'chat_right' : '' }}">
+            <a class="venobox vbox-item" data-gall="gallery{{ $message->id }}" href="{{ asset($imagePath) }}">
                 <img src="{{ asset($imagePath) }}" alt="gallery1" class="img-fluid w-100">
             </a>
 
@@ -16,7 +16,7 @@
 
             <span class="time"> {{ timeAgo($message->created_at) }}</span>
             
-            @if ($message->from_id === auth()->user()->id)
+            @if ($message->from_id == auth()->user()->id)
                 <a class="action dlt-message" href="javascript:void()" data-msgid = "{{ $message->id }}"><i class="fas fa-trash"></i></a>
             @endif
 
@@ -26,11 +26,11 @@
 @else
 
     <div class="wsus__single_chat_area  message-card" data-id="{{ $message->id }}">
-        <div class="wsus__single_chat {{ $message->from_id === auth()->user()->id ? 'chat_right' : '' }}">
+        <div class="wsus__single_chat {{ $message->from_id == auth()->user()->id ? 'chat_right' : '' }}">
             <p class="messages">{{ $message->body }}</p>
             <span class="time"> {{ timeAgo($message->created_at) }}</span>
             
-            @if ($message->from_id === auth()->user()->id)
+            @if ($message->from_id == auth()->user()->id)
                 <a class="action dlt-message" href="javascript:void()" data-msgid = "{{ $message->id }}"><i class="fas fa-trash"></i></a>
             @endif
             

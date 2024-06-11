@@ -218,9 +218,9 @@ function messageFormReset()
 {
     $(".attachment-block").addClass("d-none");
     
-    $(".emojionearea-editor").text("");
-    
-    $("input[type='file']").val(null);
+    messageForm.trigger("reset");
+    var emojiElt = $("#example1").emojioneArea();
+    emojiElt.data('emojioneArea').setText('');
 
 }//End Method
 
@@ -266,6 +266,7 @@ function fetchMessages(id, newFetch = false)
 
                 //Make Messages seen
                 makeSeen(true);
+                initVenobox();
 
                 if (messagesPage == 1) {
 
@@ -284,7 +285,9 @@ function fetchMessages(id, newFetch = false)
                 //Pagination Lock and Page Increment
                 noMoreMessages = messagesPage >= data?.last_page;
                 if (!noMoreMessages) messagesPage += 1;
-
+                
+                initVenobox();
+                
                 disableChatBoxLoader();
             },
             error: function (xhr, status, error) {}
@@ -483,6 +486,8 @@ function Idinfo(id)
             {
                 $(".nothing_share").removeClass("d-none");
             }
+
+            initVenobox();
 
             //Fetch Favourites and handles the favorite button
             data.favorite > 0 ? $(".favourite").addClass("active") : $(".favourite").removeClass("active");

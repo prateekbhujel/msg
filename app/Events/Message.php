@@ -50,7 +50,7 @@ class Message implements ShouldBroadcast
             'id'            => $this->message->id,
             'body'          => $this->message->body,
             'to_id'         => $this->message->to_id,
-            'attachment'    => 'public/'. json_decode($this->message->attachment),
+            'attachment'    => ($this->message->attachment != null) ? 'public/': '' . json_decode($this->message->attachment),
             'from_id'       => auth()->user()->id,
         ];
         

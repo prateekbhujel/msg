@@ -359,13 +359,15 @@ function getContacts()
  *  ----------------------
  * | User Search Function |
  *  ----------------------
-*/
+ */
 let searchPage = 1;
 let noMoreDataSearch = false;
 let searchTempVal = "";
 let setSearchLoading = false;
+
 function searchUsers(query) {
-    if (query != searchTempVal) {
+    // Check if the new query is different from the previous one
+    if (query !== searchTempVal) {
         searchPage = 1;
         noMoreDataSearch = false;
     }
@@ -380,6 +382,7 @@ function searchUsers(query) {
     }
     history.replaceState(null, '', url.toString());
 
+    // Proceed with the search request if not currently loading and if there's more data to fetch
     if (!setSearchLoading && !noMoreDataSearch) {
         $.ajax({
             method: 'GET',
@@ -388,13 +391,12 @@ function searchUsers(query) {
             beforeSend: function () {
                 setSearchLoading = true;
                 let loader = `
-                                <div class="text-center mt-2 search-loader">
-                                    <div class="spinner-border text-primary" role="status">
-                                        <span class="visually-hidden">Loading...</span>
-                                    </div>
-                                </div>
-                            `;
-
+                    <div class="text-center mt-2 search-loader">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                `;
                 $('.user_search_list_result').append(loader);
             },
             success: function (data) {
@@ -403,7 +405,6 @@ function searchUsers(query) {
 
                 if (searchPage < 2) {
                     $('.user_search_list_result').html(data.records);
-
                 } else {
                     $('.user_search_list_result').append(data.records);
                 }
@@ -411,7 +412,6 @@ function searchUsers(query) {
                 noMoreDataSearch = searchPage >= data?.last_page;
 
                 if (!noMoreDataSearch) searchPage += 1;
-
             },
             error: function (xhr, status, error) {
                 setSearchLoading = false;
@@ -419,7 +419,7 @@ function searchUsers(query) {
             }
         });
     }
-}//End Method
+}// End Method
 
 /**
  *  --------------------------------------

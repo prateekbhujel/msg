@@ -371,6 +371,14 @@ function searchUsers(query) {
     }
 
     searchTempVal = query;
+    // Update the URL with the search query
+    const url = new URL(window.location);
+    if (query) {
+        url.searchParams.set('search', encodeURIComponent(query));
+    } else {
+        url.searchParams.delete('search');
+    }
+    history.replaceState(null, '', url.toString());
 
     if (!setSearchLoading && !noMoreDataSearch) {
         $.ajax({

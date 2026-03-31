@@ -489,8 +489,63 @@
         height: 30px;
     }
 
-    .modal-footer .toggle-screen-share,
-    .modal-footer .hangup-call {
+    .call-screen__header {
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas:
+            "identity close"
+            "timer timer";
+        align-items: start;
+    }
+
+    .call-screen__identity {
+        grid-area: identity;
+    }
+
+    .call-screen__timer {
+        grid-area: timer;
+        align-items: flex-start;
+    }
+
+    .call-close {
+        grid-area: close;
+        justify-self: end;
+    }
+
+    .call-screen__shell {
+        padding: 16px;
+        gap: 14px;
+    }
+
+    .call-stage {
+        border-radius: 24px;
+    }
+
+    .call-hero-avatar {
+        width: 124px;
+        height: 124px;
+        border-radius: 32px;
+    }
+
+    .call-hero-name {
+        font-size: 28px;
+    }
+
+    .call-local-video-shell {
+        right: 14px;
+        bottom: 14px;
+        width: min(38vw, 152px);
+        border-radius: 18px;
+    }
+
+    .incoming-call-actions,
+    .call-screen__controls {
+        flex-direction: column;
+    }
+
+    .toggle-screen-share,
+    .call-screen__controls .hangup-call,
+    .incoming-call-actions .accept-call,
+    .incoming-call-actions .decline-call {
         width: 100%;
         justify-content: center;
     }

@@ -81,6 +81,7 @@ class CallInvitation implements ShouldBroadcastNow
             'uuid' => $this->session->uuid,
             'call_type' => $this->session->call_type,
             'status' => $this->session->status,
+            'timeout_seconds' => (int) data_get($this->session->historyMessage?->meta, 'timeout_seconds', 35),
             'caller' => [
                 'id' => $this->session->caller?->id ? (int) $this->session->caller->id : null,
                 'name' => $this->session->caller?->name,

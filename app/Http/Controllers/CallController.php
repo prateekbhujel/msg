@@ -39,6 +39,14 @@ class CallController extends Controller
             ->latest('id')
             ->first();
 
+        if ($existingSession && $this->shouldExpireRingingSession($existingSession)) {
+            $existingSession = $this->expireRingingSession($existingSession);
+        }
+
+        if ($existingSession && ! in_array($existingSession->status, ['ringing', 'active'], true)) {
+            $existingSession = null;
+        }
+
         if ($existingSession) {
             $historyMessage = $this->ensureHistoryMessage($existingSession, 'ringing');
 
@@ -80,6 +88,14 @@ class CallController extends Controller
             ]);
         }
 
+        if ($this->shouldExpireRingingSession($session)) {
+            $session = $this->expireRingingSession($session);
+        }
+
+        if ($session->status === 'missed') {
+            abort(409, 'Call was not answered.');
+        }
+
         abort_unless($session->status === 'ringing', 409, 'Call is no longer ringing.');
 
         $session->update([
@@ -111,6 +127,14 @@ class CallController extends Controller
             return response()->json([
                 'session' => $this->formatSession($session->fresh(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name'])),
             ]);
+        }
+
+        if ($this->shouldExpireRingingSession($session)) {
+            $session = $this->expireRingingSession($session);
+        }
+
+        if ($session->status === 'missed') {
+            abort(409, 'Call was not answered.');
         }
 
         abort_unless($session->status === 'ringing', 409, 'Call is no longer ringing.');
@@ -229,6 +253,7 @@ class CallController extends Controller
             'status' => $session->status,
             'accepted_at' => $session->accepted_at?->toIso8601String(),
             'ended_at' => $session->ended_at?->toIso8601String(),
+            'timeout_seconds' => $this->ringTimeoutSeconds(),
             'caller' => [
                 'id' => $session->caller?->id ? (int) $session->caller->id : null,
                 'name' => $session->caller?->name,
@@ -270,6 +295,7 @@ class CallController extends Controller
             'accepted_at' => $session->accepted_at?->toIso8601String(),
             'ended_at' => $session->ended_at?->toIso8601String(),
             'duration_seconds' => $durationSeconds,
+            'timeout_seconds' => $this->ringTimeoutSeconds(),
         ], $extraMeta);
         $historyMessage->seen = false;
         $historyMessage->save();
@@ -304,6 +330,33 @@ class CallController extends Controller
         $endedAt = $session->ended_at ?? now();
 
         return $startedAt ? $startedAt->diffInSeconds($endedAt) : 0;
+    }
+
+    protected function ringTimeoutSeconds(): int
+    {
+        return 35;
+    }
+
+    protected function shouldExpireRingingSession(CallSession $session): bool
+    {
+        return $session->status === 'ringing'
+            && $session->accepted_at === null
+            && $session->created_at !== null
+            && $session->created_at->diffInSeconds(now()) >= $this->ringTimeoutSeconds();
+    }
+
+    protected function expireRingingSession(CallSession $session): CallSession
+    {
+        $session->update([
+            'status' => 'missed',
+            'ended_at' => $session->ended_at ?? now(),
+        ]);
+
+        $this->ensureHistoryMessage($session, 'missed', [
+            'duration_seconds' => 0,
+        ]);
+
+        return $session->fresh(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name', 'historyMessage']);
     }
 
     protected function formatDuration(int $seconds): string

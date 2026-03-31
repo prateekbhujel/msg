@@ -237,10 +237,14 @@ class MessengerCallManager
         this.$placeholder = this.$modal.find('.call-placeholder');
         this.$participantAvatar = this.$modal.find('.call-participant-avatar');
         this.$participantName = this.$modal.find('.call-participant-name');
+        this.$heroAvatar = this.$modal.find('.call-hero-avatar');
+        this.$heroName = this.$modal.find('.call-hero-name');
         this.$mediaLabel = this.$modal.find('.call-media-label');
+        this.$timerLabel = this.$modal.find('.call-screen__timer-label');
         this.$duration = this.$modal.find('.call-duration');
         this.$remoteVideo = this.$modal.find('.call-remote-video');
         this.$localVideo = this.$modal.find('.call-local-video');
+        this.$localVideoShell = this.$modal.find('.call-local-video-shell');
         this.$incomingActions = this.$modal.find('.incoming-call-actions');
         this.$acceptButton = this.$modal.find('.accept-call');
         this.$declineButton = this.$modal.find('.decline-call');
@@ -263,6 +267,9 @@ class MessengerCallManager
         this.ringtoneInterval = null;
         this.callTimer = null;
         this.callStartedAt = null;
+        this.pendingCallTimer = null;
+        this.pendingCallDeadlineAt = null;
+        this.pendingCallTimeoutFired = false;
         this.latestHistoryMessage = null;
         this.screenShareStream = null;
         this.activeIncomingNotification = null;
@@ -287,13 +294,15 @@ class MessengerCallManager
 
     getModalInstance()
     {
-        if (window.bootstrap && window.bootstrap.Modal) {
-            return window.bootstrap.Modal.getOrCreateInstance(this.$modal[0]);
-        }
-
         return {
-            show: () => this.$modal.addClass('show').css('display', 'block'),
-            hide: () => this.$modal.removeClass('show').css('display', 'none'),
+            show: () => {
+                this.$modal.addClass('is-visible').attr('aria-hidden', 'false');
+                $('body').addClass('call-screen-open');
+            },
+            hide: () => {
+                this.$modal.removeClass('is-visible').attr('aria-hidden', 'true');
+                $('body').removeClass('call-screen-open');
+            },
         };
     }
 
@@ -343,10 +352,6 @@ class MessengerCallManager
                 await this.endCurrentCall(this.role === 'incoming' ? 'decline' : 'hangup');
             });
 
-        this.$modal.off('hidden.bs.modal.callManager').on('hidden.bs.modal.callManager', () => {
-            this.cleanup({ leaveSession: true });
-        });
-
         $(window).off('beforeunload.callManager').on('beforeunload.callManager', () => {
             this.stopMediaStream();
             this.closePeerConnection();
@@ -389,17 +394,23 @@ class MessengerCallManager
         this.$title.text('Call');
         this.updateStatus('Waiting...', 'muted');
         this.$incomingActions.addClass('d-none');
-        this.$hangupButton.text('Hang up');
+        this.$hangupButton.find('span').text('End call');
         this.$participantName.text('Ready to connect');
+        this.$heroName.text('Ready to connect');
         this.$mediaLabel.text('Video call');
+        this.$timerLabel.text('Live');
         this.$duration.text('00:00');
         this.$placeholder.removeClass('d-none');
         this.$participantAvatar.css('background-image', `url("${resolveAssetUrl(this.assetUrl, 'default/avatar.png')}")`);
+        this.$heroAvatar.css('background-image', `url("${resolveAssetUrl(this.assetUrl, 'default/avatar.png')}")`);
         this.$remoteVideo[0].srcObject = null;
         this.$localVideo[0].srcObject = null;
         this.$localVideo.addClass('d-none');
+        this.$localVideoShell.addClass('d-none');
         this.$remoteVideo.css({ opacity: 1, pointerEvents: 'auto' });
-        this.$screenShareButton.addClass('d-none').removeClass('is-sharing').html('<i class="fas fa-desktop me-2"></i>Share screen');
+        this.$screenShareButton.addClass('d-none').removeClass('is-sharing');
+        this.$screenShareButton.find('span').text('Share screen');
+        this.pendingCallTimeoutFired = false;
     }
 
     formatDuration(seconds)
@@ -418,7 +429,9 @@ class MessengerCallManager
 
     startCallDurationTimer(startedAt = null)
     {
+        this.stopPendingCallTimer(false);
         this.stopCallDurationTimer();
+        this.$timerLabel.text('Live');
 
         const parsedStart = startedAt ? new Date(startedAt) : new Date();
         this.callStartedAt = Number.isNaN(parsedStart.getTime()) ? Date.now() : parsedStart.getTime();
@@ -441,6 +454,65 @@ class MessengerCallManager
 
         this.callStartedAt = null;
         this.$duration.text('00:00');
+    }
+
+    startPendingCallTimer(startedAt = null, timeoutSeconds = null)
+    {
+        this.stopPendingCallTimer(false);
+        this.stopCallDurationTimer();
+        this.$timerLabel.text('No answer in');
+
+        const safeTimeoutSeconds = Math.max(1, Number(timeoutSeconds || this.session?.timeout_seconds || 35));
+        const startedAtMs = (() => {
+            const parsedDate = startedAt ? new Date(startedAt) : null;
+
+            return parsedDate && !Number.isNaN(parsedDate.getTime())
+                ? parsedDate.getTime()
+                : Date.now();
+        })();
+
+        this.pendingCallDeadlineAt = startedAtMs + (safeTimeoutSeconds * 1000);
+        this.pendingCallTimeoutFired = false;
+
+        const tick = () => {
+            const remainingSeconds = Math.max(0, Math.ceil((this.pendingCallDeadlineAt - Date.now()) / 1000));
+            this.$duration.text(this.formatDuration(remainingSeconds));
+
+            if (remainingSeconds <= 0 && !this.pendingCallTimeoutFired) {
+                this.pendingCallTimeoutFired = true;
+                this.autoTimeoutCurrentCall().catch(() => {});
+            }
+        };
+
+        tick();
+        this.pendingCallTimer = window.setInterval(tick, 1000);
+    }
+
+    stopPendingCallTimer(resetDisplay = true)
+    {
+        if (this.pendingCallTimer) {
+            window.clearInterval(this.pendingCallTimer);
+            this.pendingCallTimer = null;
+        }
+
+        this.pendingCallDeadlineAt = null;
+        this.pendingCallTimeoutFired = false;
+
+        if (resetDisplay) {
+            this.$timerLabel.text('Live');
+            this.$duration.text('00:00');
+        }
+    }
+
+    async autoTimeoutCurrentCall()
+    {
+        if (!this.session || this.session.status !== 'ringing') {
+            return;
+        }
+
+        this.updateStatus('No answer', 'warning');
+        notify('info', 'Call was not answered.');
+        await this.endCurrentCall('timeout', true);
     }
 
     getConversationPartnerId(session = this.session, historyMessage = null)
@@ -563,7 +635,7 @@ class MessengerCallManager
 
     updateHangupLabel(label)
     {
-        this.$hangupButton.text(label);
+        this.$hangupButton.find('span').text(label);
     }
 
     toggleIncomingActions(show)
@@ -574,9 +646,13 @@ class MessengerCallManager
     setParticipantCard(participant)
     {
         const image = participant?.avatar || 'default/avatar.png';
+        const resolvedImage = resolveAssetUrl(this.assetUrl, image);
+        const name = participantName(participant);
 
-        this.$participantName.text(participantName(participant));
-        this.$participantAvatar.css('background-image', `url("${resolveAssetUrl(this.assetUrl, image)}")`);
+        this.$participantName.text(name);
+        this.$heroName.text(name);
+        this.$participantAvatar.css('background-image', `url("${resolvedImage}")`);
+        this.$heroAvatar.css('background-image', `url("${resolvedImage}")`);
     }
 
     setCallMode(callType)
@@ -586,6 +662,7 @@ class MessengerCallManager
         this.callType = isVideo ? 'video' : 'audio';
         this.$mediaLabel.text(isVideo ? 'Video call' : 'Audio call');
         this.$localVideo.toggleClass('d-none', !isVideo);
+        this.$localVideoShell.toggleClass('d-none', !isVideo);
         this.$remoteVideo.css({
             opacity: isVideo ? 1 : 0,
             pointerEvents: isVideo ? 'auto' : 'none',
@@ -884,7 +961,7 @@ class MessengerCallManager
             this.$title.text(
                 this.session.status === 'active'
                     ? `In call with ${participantName(this.session.callee)}`
-                    : `Calling ${participantName(this.session.callee)}`
+                    : `${callTypeLabel(this.callType)} call to ${participantName(this.session.callee)}`
             );
             this.updateStatus(
                 this.session.status === 'active' ? 'Connected' : 'Ringing...',
@@ -896,6 +973,8 @@ class MessengerCallManager
             if (this.session.status === 'active') {
                 this.stopRingtone();
                 this.startCallDurationTimer(response.history_message?.meta?.started_at || this.session.accepted_at);
+            } else {
+                this.startPendingCallTimer(response.history_message?.created_at, response.history_message?.meta?.timeout_seconds || this.session.timeout_seconds);
             }
             this.updateScreenShareButton();
             this.showModal();
@@ -932,12 +1011,13 @@ class MessengerCallManager
         this.pendingCandidates = [];
 
         this.setParticipantCard(session.caller);
-        this.$title.text(`Incoming ${this.callType} call`);
+        this.$title.text(`Incoming ${callTypeLabel(this.callType)} call`);
         this.setCallMode(this.callType);
         this.updateStatus('Incoming call', 'warning');
         this.updateHangupLabel('Decline');
         this.toggleIncomingActions(true);
         this.syncHistoryMessage(event.history_message, event.history_message_html, session);
+        this.startPendingCallTimer(event.history_message?.created_at, event.history_message?.meta?.timeout_seconds || session.timeout_seconds);
         this.playRingtone();
         this.startAttentionPulse(`${participantName(session.caller)} is calling`);
         this.subscribeToSessionChannel(session.uuid);
@@ -987,6 +1067,7 @@ class MessengerCallManager
             this.role = 'callee';
             this.callType = this.session.call_type || this.callType;
             this.stopRingtone();
+            this.stopPendingCallTimer(false);
             this.stopAttentionPulse();
             await this.closeIncomingCallNotifications(this.session.uuid);
             this.setParticipantCard(this.session.caller);
@@ -1013,7 +1094,7 @@ class MessengerCallManager
             return;
         }
 
-        const isDecline = action === 'decline' || this.role === 'incoming';
+        const isDecline = action === 'decline';
         const method = isDecline ? 'POST' : 'DELETE';
         const url = isDecline
             ? route('messenger.calls.decline', { session: this.session.uuid })
@@ -1035,6 +1116,7 @@ class MessengerCallManager
             }
         } finally {
             this.stopRingtone();
+            this.stopPendingCallTimer(false);
             this.stopAttentionPulse();
             await this.closeIncomingCallNotifications(this.session?.uuid);
             this.cleanup({ leaveSession: true });
@@ -1060,6 +1142,7 @@ class MessengerCallManager
         switch (event.type) {
         case 'accepted':
             this.stopRingtone();
+            this.stopPendingCallTimer(false);
             this.stopAttentionPulse();
             await this.closeIncomingCallNotifications(this.session.uuid);
             this.updateScreenShareButton();
@@ -1072,6 +1155,7 @@ class MessengerCallManager
             break;
         case 'declined':
             this.stopRingtone();
+            this.stopPendingCallTimer(false);
             this.stopAttentionPulse();
             await this.closeIncomingCallNotifications(this.session.uuid);
             notify('info', 'The call was declined.');
@@ -1082,6 +1166,7 @@ class MessengerCallManager
             break;
         case 'hangup':
             this.stopRingtone();
+            this.stopPendingCallTimer(false);
             this.stopAttentionPulse();
             await this.closeIncomingCallNotifications(this.session.uuid);
             this.updateStatus(
@@ -1255,9 +1340,7 @@ class MessengerCallManager
 
         this.$screenShareButton.toggleClass('d-none', !canShare);
         this.$screenShareButton.toggleClass('is-sharing', isSharing);
-        this.$screenShareButton.html(isSharing
-            ? '<i class="fas fa-desktop me-2"></i>Stop sharing'
-            : '<i class="fas fa-desktop me-2"></i>Share screen');
+        this.$screenShareButton.find('span').text(isSharing ? 'Stop sharing' : 'Share screen');
     }
 
     async toggleScreenShare()
@@ -1473,6 +1556,7 @@ class MessengerCallManager
         this.stopMediaStream();
         this.closePeerConnection();
         this.stopRingtone();
+        this.stopPendingCallTimer(false);
         this.stopCallDurationTimer();
         this.stopAttentionPulse();
 

@@ -156,3 +156,19 @@ it('marks unanswered ringing calls as missed without adding fake duration', func
             && (int) $event->payload['history_message']['meta']['duration_seconds'] === 0;
     });
 });
+
+it('does not allow accepting a ringing call after the timeout window', function () {
+    $caller = User::factory()->create();
+    $callee = User::factory()->create();
+    $session = makeCallSession($caller, $callee);
+    $session->forceFill([
+        'created_at' => now()->subSeconds(40),
+        'updated_at' => now()->subSeconds(40),
+    ])->save();
+
+    $this->actingAs($callee)
+        ->postJson(route('messenger.calls.accept', ['session' => $session->uuid]))
+        ->assertStatus(409);
+
+    expect($session->fresh()->status)->toBe('missed');
+});

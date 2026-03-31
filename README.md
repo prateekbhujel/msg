@@ -11,6 +11,8 @@ Laravel 12 messenger with real-time chat, groups, voice notes, media sharing, We
 - Replies, reactions, and typing indicators
 - WebRTC audio/video calls with:
   - missed / not answered call states
+  - unanswered ring timeout handling
+  - full-screen in-app call surface
   - in-chat call history
   - incoming call ringtone + browser notifications
   - screen sharing during active video calls

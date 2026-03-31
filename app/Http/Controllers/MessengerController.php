@@ -386,24 +386,22 @@ class MessengerController extends Controller
     public function deleteMessage(Request $request)
     {
         $message = Message::findOrFail($request->message_id);
+        abort_unless($message->canBeDeletedBy((int) Auth::id()), 403);
 
-        if ($message->from_id == Auth::user()->id) {
-            foreach ($message->attachmentItems() as $attachment) {
-                $attachmentPath = $this->resolveStoredUploadPath($attachment['path']);
+        foreach ($message->attachmentItems() as $attachment) {
+            $attachmentPath = $this->resolveStoredUploadPath($attachment['path']);
 
-                if (file_exists($attachmentPath)) {
-                    unlink($attachmentPath);
-                }
+            if (file_exists($attachmentPath)) {
+                unlink($attachmentPath);
             }
-
-            $message->delete();
-            return response()->json([
-                'id'        => $request->message_id,
-                'message'   => 'Message Deleted Successfully',
-            ], 200);
         }
 
-        return;
+        $message->delete();
+
+        return response()->json([
+            'id' => $request->message_id,
+            'message' => 'Message Deleted Successfully',
+        ], 200);
     }
 
     protected function collectAttachments(Request $request): array

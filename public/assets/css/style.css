@@ -752,6 +752,9 @@ button {
     font-size: 16px;
     font-weight: 400;
     color: var(--colorBlack);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .wsus__single_chat .time {

@@ -122,6 +122,45 @@ function escapeHtml(value)
         .replaceAll("'", '&#039;');
 }
 
+function getComposerEmojiArea()
+{
+    return messageInput.data('emojioneArea') || $("#example1").data('emojioneArea') || null;
+}
+
+function getComposerText()
+{
+    const composer = getComposerEmojiArea();
+
+    if (composer && typeof composer.getText === 'function') {
+        return composer.getText();
+    }
+
+    return messageInput.val() || '';
+}
+
+function setComposerText(value = '')
+{
+    const composer = getComposerEmojiArea();
+
+    if (composer && typeof composer.setText === 'function') {
+        composer.setText(value);
+        return;
+    }
+
+    messageInput.val(value);
+}
+
+function shouldSendFromComposer(event)
+{
+    return !!event
+        && event.key === 'Enter'
+        && !event.shiftKey
+        && !event.ctrlKey
+        && !event.metaKey
+        && !event.altKey
+        && !event.isComposing;
+}
+
 function toggleComposerState(className, active = false)
 {
     composerShell.toggleClass(className, !!active);
@@ -554,6 +593,7 @@ function renderReceivedMessageCard(e)
     const messageType = e.message_type || 'text';
     const attachments = normalizeAttachments(e.attachments || e.attachment, messageType);
     const isMine = Number(e.from_id) === Number(auth_id);
+    const canDelete = isMine || messageType === 'call';
     const bodyText = typeof e.body === 'string' ? e.body.trim() : (e.body || '');
     const body = escapeHtml(bodyText);
     const messageTime = formatTimestampLabel(e.created_at);
@@ -590,7 +630,7 @@ function renderReceivedMessageCard(e)
                         </div>
                     </div>
                     <span class="time">${messageTime} · ${duration}</span>
-                    ${isMine ? `<a class="action dlt-message" href="javascript:void(0)" data-msgid="${e.id}"><i class="fas fa-trash"></i></a>` : ''}
+                    ${canDelete ? `<a class="action dlt-message" href="javascript:void(0)" data-msgid="${e.id}"><i class="fas fa-trash"></i></a>` : ''}
                 </div>
             </div>
         `;
@@ -627,7 +667,7 @@ function renderReceivedMessageCard(e)
                         </div>
                     </div>
                     <span class="time">${messageTime}</span>
-                    ${isMine ? `<a class="action dlt-message" href="javascript:void(0)" data-msgid="${e.id}"><i class="fas fa-trash"></i></a>` : ''}
+                    ${canDelete ? `<a class="action dlt-message" href="javascript:void(0)" data-msgid="${e.id}"><i class="fas fa-trash"></i></a>` : ''}
                 </div>
             </div>
         `;
@@ -640,7 +680,7 @@ function renderReceivedMessageCard(e)
                     ${body ? `<p class="messages">${body}</p>` : ''}
                     ${mediaMarkup}
                     <span class="time">${messageTime}</span>
-                    ${isMine ? `<a class="action dlt-message" href="javascript:void(0)" data-msgid="${e.id}"><i class="fas fa-trash"></i></a>` : ''}
+                    ${canDelete ? `<a class="action dlt-message" href="javascript:void(0)" data-msgid="${e.id}"><i class="fas fa-trash"></i></a>` : ''}
                 </div>
             </div>
         `;
@@ -651,7 +691,7 @@ function renderReceivedMessageCard(e)
             <div class="wsus__single_chat ${isMine ? 'chat_right' : ''}">
                 ${body ? `<p class="messages">${body}</p>` : ''}
                 <span class="time">${messageTime}</span>
-                ${isMine ? `<a class="action dlt-message" href="javascript:void(0)" data-msgid="${e.id}"><i class="fas fa-trash"></i></a>` : ''}
+                ${canDelete ? `<a class="action dlt-message" href="javascript:void(0)" data-msgid="${e.id}"><i class="fas fa-trash"></i></a>` : ''}
             </div>
         </div>
     `;
@@ -688,7 +728,7 @@ async function sendMessage()
 {
     temporaryMsgId += 1;
     let tempID = `temp_${temporaryMsgId}`; //temp_1, temp_2 ....
-    const inputValue = messageInput.val();
+    const inputValue = getComposerText();
 
     if (voiceRecordingActive) {
         await stopVoiceRecording();
@@ -870,8 +910,7 @@ function messageFormReset()
     setVoiceRecordButtonState(false);
     updateComposerVoiceStatus('', false);
     messageForm.trigger("reset");
-    var emojiElt = $("#example1").emojioneArea();
-    emojiElt.data('emojioneArea').setText('');
+    setComposerText('');
 
 }//End Method
 
@@ -1558,6 +1597,19 @@ $(document).ready(function ()
         e.preventDefault();
         sendMessage();
     });
+
+    const composerEnterHandler = function (e) {
+        if (!shouldSendFromComposer(e)) {
+            return;
+        }
+
+        e.preventDefault();
+        e.stopPropagation();
+        sendMessage();
+    };
+
+    messageInput.on('keydown', composerEnterHandler);
+    $('body').on('keydown', '.emojionearea-editor', composerEnterHandler);
 
     /**
      *  -------------------------------

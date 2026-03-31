@@ -1,5 +1,6 @@
 @php
     $isMine = $message->from_id == auth()->user()->id;
+    $canDelete = $message->canBeDeletedBy((int) auth()->id());
     $attachments = $message->attachmentItems();
     $messageType = $message->message_type ?? 'text';
     $callType = data_get($message->meta, 'call_type', 'video');
@@ -129,7 +130,7 @@
             <span class="time">{{ timeAgo($message->created_at) }} · {{ $message->callDurationLabel() }}</span>
         @endif
 
-        @if ($isMine)
+        @if ($canDelete)
             <a class="action dlt-message" href="javascript:void()" data-msgid="{{ $message->id }}"><i class="fas fa-trash"></i></a>
         @endif
     </div>

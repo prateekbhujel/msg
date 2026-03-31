@@ -95,6 +95,20 @@ class Message extends Model
         return ($this->message_type ?? 'text') === 'call';
     }
 
+    public function isParticipant(int $userId): bool
+    {
+        return (int) $this->from_id === $userId || (int) $this->to_id === $userId;
+    }
+
+    public function canBeDeletedBy(int $userId): bool
+    {
+        if ($this->isCallMessage()) {
+            return $this->isParticipant($userId);
+        }
+
+        return (int) $this->from_id === $userId;
+    }
+
     public function isVoiceMessage(): bool
     {
         return ($this->message_type ?? 'text') === 'voice';

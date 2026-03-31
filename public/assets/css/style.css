@@ -1342,6 +1342,13 @@ button {
     box-shadow: 0 18px 40px rgba(33, 128, 243, 0.08);
 }
 
+.wsus__chat_area_footer .footer_message.is-sending .message-send-button,
+.wsus__chat_area_footer .footer_message.is-sending .voice-record-toggle,
+.wsus__chat_area_footer .footer_message.is-sending form .file label {
+    opacity: .6;
+    cursor: not-allowed;
+}
+
 .wsus__chat_area_footer .footer_message.is-recording .voice-record-toggle {
     animation: voicePulse 1.2s ease-in-out infinite;
 }

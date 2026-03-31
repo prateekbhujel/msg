@@ -18,6 +18,7 @@ var voiceRecordingTimer = null;
 var voiceRecordingStartedAt = null;
 var voiceRecordingLimitReached = false;
 var voiceRecordingDurationSeconds = 0;
+var messageSending = false;
 var attachmentPreviewUrls = [];
 
 const VOICE_RECORDING_MAX_SECONDS = 120;
@@ -190,6 +191,27 @@ function setVoiceRecordButtonState(active = false)
         voiceRecordToggleIcon.toggleClass('fa-microphone', !active);
         voiceRecordToggleIcon.toggleClass('fa-stop', active);
     }
+}
+
+function focusComposer()
+{
+    const editor = $('.emojionearea-editor').get(0);
+
+    if (editor && typeof editor.focus === 'function') {
+        editor.focus();
+        return;
+    }
+
+    messageInput.trigger('focus');
+}
+
+function setComposerSendingState(active = false)
+{
+    messageSending = !!active;
+    composerShell.toggleClass('is-sending', active);
+    voiceRecordToggle.prop('disabled', active);
+    attachmentInput.prop('disabled', active);
+    messageForm.find('.message-send-button').prop('disabled', active);
 }
 
 function formatFileSize(bytes)
@@ -616,6 +638,27 @@ function resetVoiceRecordingState()
     }
 }
 
+function finishComposerSend({ clearText = true } = {})
+{
+    clearComposerAttachments();
+    clearVoiceRecordingPreview();
+    resetVoiceRecordingState();
+    setComposerSendingState(false);
+
+    if (clearText) {
+        messageForm.trigger('reset');
+        setComposerText('');
+    }
+
+    toggleComposerState('has-attachments', false);
+    toggleComposerState('has-voice-preview', false);
+    toggleComposerState('is-recording', false);
+    setVoiceRecordButtonState(false);
+    updateComposerVoiceStatus('', false);
+    scrolllToBottom(messageBoxContainer);
+    focusComposer();
+}
+
 function stopVoiceRecording()
 {
     return new Promise((resolve) => {
@@ -920,18 +963,34 @@ function imagePreview(input, selector) {
 }//End Method
 async function sendMessage() 
 {
-    temporaryMsgId += 1;
-    let tempID = `temp_${temporaryMsgId}`; //temp_1, temp_2 ....
-    const inputValue = getComposerText();
-
-    if (voiceRecordingActive) {
-        await stopVoiceRecording();
+    if (messageSending) {
+        return;
     }
 
+    const inputValue = getComposerText();
     const hasAttachment = (attachmentInput[0]?.files?.length || 0) > 0;
-    const hasVoiceMessage = !!voiceRecordingBlob;
+    const hasVoiceCandidate = !!voiceRecordingBlob || voiceRecordingActive;
 
-    if (inputValue.trim().length > 0 || hasAttachment || hasVoiceMessage) {
+    if (inputValue.trim().length <= 0 && !hasAttachment && !hasVoiceCandidate) {
+        return;
+    }
+
+    messageSending = true;
+
+    try {
+        if (voiceRecordingActive) {
+            await stopVoiceRecording();
+        }
+
+        const hasVoiceMessage = !!voiceRecordingBlob;
+        const composerSnapshot = {
+            text: inputValue,
+            hasAttachment,
+            hasVoiceMessage,
+        };
+
+        temporaryMsgId += 1;
+        let tempID = `temp_${temporaryMsgId}`; //temp_1, temp_2 ....
         const formData = new FormData(messageForm[0]);
         formData.append("id", getMessengerId());
         formData.append("temporaryMsgId", tempID);
@@ -956,6 +1015,7 @@ async function sendMessage()
             processData: false,
             contentType: false,
             beforeSend: function () {
+                setComposerSendingState(true);
                 //Add temp message on dom
                 if (hasAttachment || hasVoiceMessage) {
                     messageBoxContainer.append(
@@ -972,8 +1032,6 @@ async function sendMessage()
                 $('.no_messages').addClass('d-none');
 
                 scrolllToBottom(messageBoxContainer);
-                messageFormReset();
-
             },
             success: function (data) {
                 makeSeen(true);
@@ -989,12 +1047,31 @@ async function sendMessage()
                 }
                 initVenobox();
                 initializeVoicePlayers(messageBoxContainer[0]);
+                const shouldClearText = getComposerText() === composerSnapshot.text;
+
+                finishComposerSend({ clearText: shouldClearText });
+                updateSelectedContent(getMessengerId());
+                messageSending = false;
             },
             error: function (xhr, status, error) {
-                // console.log(error);
+                const tempMsgCardElement = messageBoxContainer.find(`.message-card[data-id="${tempID}"]`);
+
+                if (tempMsgCardElement.length) {
+                    tempMsgCardElement.remove();
+                }
+
+                setComposerSendingState(false);
+                updateComposerVoiceStatus('', false);
+                messageSending = false;
+                focusComposer();
+                notyf.error('Unable to send message. Please try again.');
             }
         });
-
+    } catch (error) {
+        messageSending = false;
+        setComposerSendingState(false);
+        focusComposer();
+        notyf.error('Unable to send message. Please try again.');
     }
 
 }//End Method

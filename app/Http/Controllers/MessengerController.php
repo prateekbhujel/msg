@@ -90,7 +90,7 @@ class MessengerController extends Controller
         foreach ($sharedPhotos as $photo) 
         {
             foreach ($photo->attachmentItems() as $attachment) {
-                if (($attachment['type'] ?? null) !== 'image') {
+                if (! in_array(($attachment['type'] ?? null), ['image', 'video'], true)) {
                     continue;
                 }
 
@@ -125,9 +125,9 @@ class MessengerController extends Controller
             'id' => ['required', 'integer'],
             'temporaryMsgId' => ['required'],
             'message' => ['nullable', 'string', 'max:5000'],
-            'attachment' => ['nullable', 'file', 'max:10240'],
+            'attachment' => ['nullable', 'file', 'max:51200'],
             'attachments' => ['nullable', 'array'],
-            'attachments.*' => ['nullable', 'file', 'max:10240'],
+            'attachments.*' => ['nullable', 'file', 'max:51200'],
             'voice_message' => ['nullable', 'file', 'max:51200', 'mimes:webm,ogg,mp3,wav,m4a,aac'],
         ]);
 
@@ -389,7 +389,7 @@ class MessengerController extends Controller
 
         if ($message->from_id == Auth::user()->id) {
             foreach ($message->attachmentItems() as $attachment) {
-                $attachmentPath = public_path($attachment['path']);
+                $attachmentPath = $this->resolveStoredUploadPath($attachment['path']);
 
                 if (file_exists($attachmentPath)) {
                     unlink($attachmentPath);
@@ -448,7 +448,7 @@ class MessengerController extends Controller
 
         $storedPath = $this->storeUploadedFile($file, 'uploads/voice-notes');
 
-        return $this->buildAttachmentPayload($file, $storedPath);
+        return $this->buildAttachmentPayload($file, $storedPath, 'audio');
     }
     
 }

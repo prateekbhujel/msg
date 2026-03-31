@@ -134,7 +134,8 @@ class Message extends Model
 
         $imageCount = collect($attachments)->where('type', 'image')->count();
         $audioCount = collect($attachments)->where('type', 'audio')->count();
-        $fileCount = count($attachments) - $imageCount - $audioCount;
+        $videoCount = collect($attachments)->where('type', 'video')->count();
+        $fileCount = count($attachments) - $imageCount - $audioCount - $videoCount;
 
         $parts = [];
 
@@ -144,6 +145,10 @@ class Message extends Model
 
         if ($audioCount > 0) {
             $parts[] = $audioCount === 1 ? '1 audio file' : "{$audioCount} audio files";
+        }
+
+        if ($videoCount > 0) {
+            $parts[] = $videoCount === 1 ? '1 video' : "{$videoCount} videos";
         }
 
         if ($fileCount > 0) {

@@ -845,6 +845,14 @@ button {
     -o-border-radius: 5px;
 }
 
+.wsus__single_chat .message-media-video {
+    width: 100%;
+    max-height: 320px;
+    object-fit: cover;
+    background: #0f172a;
+    display: block;
+}
+
 .wsus__single_chat_area .pre_loader {
     display: inline-block;
     background: var(--colorPrimary);
@@ -871,6 +879,7 @@ button {
     border-radius: 35px;
     padding: 14px 14px 12px;
     box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+    transition: box-shadow .2s ease, transform .2s ease, border-color .2s ease;
 }
 
 .wsus__chat_area_footer .footer_message .attachment-block {
@@ -880,6 +889,8 @@ button {
     background: linear-gradient(180deg, rgba(248, 250, 252, 0.95) 0%, rgba(255, 255, 255, 1) 100%);
     border: 1px solid #E4E7E9;
     border-radius: 24px;
+    max-height: 360px;
+    overflow: hidden;
 }
 
 .wsus__chat_area_footer .footer_message .attachment-preview-header {
@@ -913,6 +924,9 @@ button {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
     gap: 12px;
+    max-height: 270px;
+    overflow-y: auto;
+    padding-right: 4px;
 }
 
 .wsus__chat_area_footer .footer_message .attachment-preview-card {
@@ -925,6 +939,24 @@ button {
     background: var(--colorWhite);
     box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
     min-width: 0;
+    transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+}
+
+.wsus__chat_area_footer .footer_message .attachment-preview-card[data-attachment-type="image"] {
+    border-color: rgba(33, 128, 243, 0.18);
+}
+
+.wsus__chat_area_footer .footer_message .attachment-preview-card[data-attachment-type="video"] {
+    border-color: rgba(99, 102, 241, 0.18);
+}
+
+.wsus__chat_area_footer .footer_message .attachment-preview-card[data-attachment-type="audio"] {
+    border-color: rgba(34, 197, 94, 0.18);
+}
+
+.wsus__chat_area_footer .footer_message .attachment-preview-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 28px rgba(15, 23, 42, 0.10);
 }
 
 .wsus__chat_area_footer .footer_message .attachment-preview-media-wrap {
@@ -943,6 +975,17 @@ button {
     height: 100%;
     object-fit: cover;
     display: block;
+}
+
+.wsus__chat_area_footer .footer_message .attachment-preview-media-video,
+.wsus__chat_area_footer .footer_message .attachment-preview-media-audio {
+    object-fit: cover;
+    background: #fff;
+}
+
+.wsus__chat_area_footer .footer_message .attachment-preview-media-audio {
+    height: auto;
+    min-height: 0;
 }
 
 .wsus__chat_area_footer .footer_message .attachment-preview-placeholder {
@@ -968,6 +1011,26 @@ button {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.wsus__chat_area_footer .footer_message .attachment-preview-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.wsus__chat_area_footer .footer_message .attachment-preview-badge {
+    display: inline-flex;
+    align-self: flex-start;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: var(--colorLightBg);
+    color: var(--colorPrimary);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
 }
 
 .wsus__chat_area_footer .footer_message .cancel-attachment {
@@ -1002,18 +1065,108 @@ button {
     margin-top: 12px;
 }
 
-.wsus__chat_area_footer .footer_message .voice-note-card {
+.voice-note-card {
     display: flex;
     align-items: center;
     gap: 12px;
     padding: 14px 16px;
     border-radius: 20px;
-    border: 1px solid #E5E7EB;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 1) 0%, rgba(248, 250, 252, 1) 100%);
+    border: 1px solid rgba(33, 128, 243, 0.14);
+    background: linear-gradient(135deg, rgba(33, 128, 243, 0.08) 0%, rgba(99, 102, 241, 0.06) 100%);
     box-shadow: 0 10px 25px rgba(15, 23, 42, 0.06);
+    min-width: 0;
 }
 
-.wsus__chat_area_footer .footer_message .voice-note-card audio {
+.voice-note-card--message {
+    padding: 12px 14px;
+    background: #fff;
+    border-color: #dbeafe;
+    box-shadow: none;
+}
+
+.voice-note-card--message .voice-note-subtitle {
+    color: #6b7280;
+}
+
+.voice-note-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--colorWhite);
+    background: linear-gradient(135deg, var(--colorPrimary) 0%, #4f46e5 100%);
+    box-shadow: 0 10px 20px rgba(33, 128, 243, 0.22);
+    flex-shrink: 0;
+}
+
+.voice-note-icon i {
+    font-size: 18px;
+}
+
+.voice-note-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.voice-note-title {
+    color: var(--colorBlack);
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.35;
+}
+
+.voice-note-subtitle {
+    color: #6b7280;
+    font-size: 12px;
+    line-height: 1.35;
+    margin-top: 2px;
+}
+
+.voice-note-wave {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 24px;
+    min-width: 72px;
+}
+
+.voice-note-wave span {
+    width: 3px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, var(--colorPrimary) 0%, #22c55e 100%);
+    animation: voiceWave 1.1s ease-in-out infinite;
+}
+
+.voice-note-wave span:nth-child(1) {
+    height: 8px;
+    animation-delay: 0s;
+}
+
+.voice-note-wave span:nth-child(2) {
+    height: 14px;
+    animation-delay: .1s;
+}
+
+.voice-note-wave span:nth-child(3) {
+    height: 20px;
+    animation-delay: .2s;
+}
+
+.voice-note-wave span:nth-child(4) {
+    height: 12px;
+    animation-delay: .3s;
+}
+
+.voice-note-wave span:nth-child(5) {
+    height: 18px;
+    animation-delay: .4s;
+}
+
+.voice-note-card audio {
     width: 100%;
     display: block;
 }
@@ -1021,7 +1174,8 @@ button {
 .wsus__chat_area_footer .footer_message .composer-actions {
     position: absolute;
     left: 16px;
-    top: 8px;
+    top: 50%;
+    transform: translateY(-50%);
     display: flex;
     align-items: center;
     gap: 8px;
@@ -1041,17 +1195,18 @@ button {
 
 .wsus__chat_area_footer .footer_message .voice-record-toggle {
     cursor: pointer;
-    width: 35px;
-    height: 35px;
+    width: 40px;
+    height: 40px;
     border: none;
-    background: var(--colorPrimary);
+    background: linear-gradient(135deg, var(--colorPrimary) 0%, #4f46e5 100%);
     color: var(--colorWhite);
-    line-height: 35px;
+    line-height: 40px;
     text-align: center;
-    border-radius: 50%;
+    border-radius: 14px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    box-shadow: 0 8px 16px rgba(33, 128, 243, 0.18);
     transition: all linear .3s;
     -webkit-transition: all linear .3s;
     -moz-transition: all linear .3s;
@@ -1071,16 +1226,36 @@ button {
     box-shadow: 0 10px 20px rgba(220, 38, 38, 0.24);
 }
 
+.wsus__chat_area_footer .footer_message.is-recording {
+    border: 1px solid rgba(220, 38, 38, 0.12);
+    box-shadow: 0 18px 40px rgba(220, 38, 38, 0.08);
+}
+
+.wsus__chat_area_footer .footer_message.has-attachments:not(.is-recording),
+.wsus__chat_area_footer .footer_message.has-voice-preview:not(.is-recording) {
+    border: 1px solid rgba(33, 128, 243, 0.12);
+    box-shadow: 0 18px 40px rgba(33, 128, 243, 0.08);
+}
+
+.wsus__chat_area_footer .footer_message.is-recording .voice-record-toggle {
+    animation: voicePulse 1.2s ease-in-out infinite;
+}
+
+.wsus__chat_area_footer .footer_message.has-voice-preview .voice-preview {
+    display: block;
+}
+
 .wsus__chat_area_footer form {
     width: 100%;
     background: var(--colorWhite);
-    padding-left: 160px;
-    padding-right: 58px;
+    padding-left: 162px;
+    padding-right: 64px;
     border-radius: 50px;
     display: flex;
     flex-flow: wrap;
     align-items: center;
     position: relative;
+    min-height: 64px;
 }
 
 
@@ -1098,14 +1273,15 @@ button {
 
 .wsus__chat_area_footer form .file label {
     cursor: pointer;
-    width: 35px;
-    height: 35px;
-    background: var(--colorPrimary);
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, var(--colorPrimary) 0%, #4f46e5 100%);
     color: var(--colorWhite);
-    line-height: 35px;
+    line-height: 40px;
     text-align: center;
-    border-radius: 50%;
+    border-radius: 14px;
     cursor: pointer;
+    box-shadow: 0 8px 16px rgba(33, 128, 243, 0.18);
     transition: all linear .3s;
     -webkit-transition: all linear .3s;
     -moz-transition: all linear .3s;
@@ -1125,19 +1301,22 @@ button {
     border-left: 1px solid #E4E7E9;
     border-top-left-radius: 0;
     border-bottom-left-radius: 0;
-    padding: 15px 20px;
+    padding: 17px 20px;
+    min-height: 56px;
 }
 
-.wsus__chat_area_footer form button {
+.wsus__chat_area_footer form .message-send-button {
     position: absolute;
-    top: 6px;
+    top: 50%;
     right: 6px;
-    width: 40px;
-    height: 40px;
-    line-height: 40px;
+    width: 44px;
+    height: 44px;
+    line-height: 44px;
     background: var(--colorLightBg);
     color: var(--colorPrimary);
     border-radius: 50%;
+    transform: translateY(-50%);
+    box-shadow: 0 8px 16px rgba(33, 128, 243, 0.12);
     transition: all linear .3s;
     -webkit-transition: all linear .3s;
     -moz-transition: all linear .3s;
@@ -1145,9 +1324,40 @@ button {
     -o-transition: all linear .3s;
 }
 
-.wsus__chat_area_footer form button:hover {
+.wsus__chat_area_footer form .message-send-button:hover {
     background: var(--colorPrimary);
     color: var(--colorLightBg);
+    transform: translateY(calc(-50% - 1px));
+}
+
+.wsus__chat_area_footer form .message-send-button i {
+    transform: translateX(1px);
+}
+
+@keyframes voiceWave {
+    0%,
+    100% {
+        transform: scaleY(.55);
+        opacity: .8;
+    }
+
+    50% {
+        transform: scaleY(1);
+        opacity: 1;
+    }
+}
+
+@keyframes voicePulse {
+    0%,
+    100% {
+        transform: translateY(-1px) scale(1);
+        box-shadow: 0 10px 20px rgba(220, 38, 38, 0.24);
+    }
+
+    50% {
+        transform: translateY(-1px) scale(1.05);
+        box-shadow: 0 14px 28px rgba(220, 38, 38, 0.32);
+    }
 }
 
 .wsus__chat_info {
@@ -1254,6 +1464,15 @@ button {
     border-radius: 50px;
 }
 
+.wsus__chat_info_gallery video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    border-radius: 8px;
+    background: #000;
+}
+
 .wsus__chat_info_gallery {
     display: flex;
     flex-wrap: wrap;
@@ -1272,6 +1491,15 @@ button {
     width: 100%;
     height: 70px;
     overflow: hidden;
+}
+
+.wsus__chat_info_gallery .shared-media-video {
+    width: 100%;
+    height: 70px;
+    object-fit: cover;
+    display: block;
+    border-radius: 8px;
+    background: #000;
 }
 
 .wsus__chat_app.show_info .wsus__chat_area {

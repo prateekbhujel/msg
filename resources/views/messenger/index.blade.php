@@ -38,7 +38,7 @@
                         <div class="attachment-preview-header">
                             <div class="attachment-preview-copy">
                                 <span class="attachment-preview-label">Attachments ready</span>
-                                <span class="attachment-preview-hint">Tap X to clear</span>
+                                <span class="attachment-preview-hint">Tap X to clear the preview tray</span>
                             </div>
                             <button type="button" class="cancel-attachment" aria-label="Remove attachments">
                                 <i class="far fa-times"></i>
@@ -49,18 +49,18 @@
                     <form class="message-form" enctype="multipart/form-data">
                         <div class="composer-actions">
                             <div class="file">
-                                <label for="file"><i class="far fa-plus"></i></label>
-                                <input id="file" class="attachment-input" name="attachments[]" type="file" hidden multiple accept="image/*,audio/*,video/*,.pdf,.txt,.doc,.docx,.xls,.xlsx,.zip,.rar">
+                                <label for="file" aria-label="Attach files" title="Attach files"><i class="far fa-plus"></i></label>
+                                <input id="file" class="attachment-input" name="attachments[]" type="file" hidden multiple accept="image/*,audio/*,video/*,.pdf,.txt,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.json,.md,.zip,.rar,.7z">
                             </div>
                             <div class="composer-voice-control">
-                                <button type="button" class="voice-record-toggle" title="Record voice note" aria-pressed="false">
+                                <button type="button" class="voice-record-toggle" title="Record voice note" aria-label="Record voice note" aria-pressed="false">
                                     <i class="fas fa-microphone"></i>
                                 </button>
                                 <span class="voice-record-status d-none small text-danger ms-2"></span>
                             </div>
                         </div>
                         <textarea class="message-input" id="example1" rows="1" placeholder="Type a message.." name="message"></textarea>
-                        <button type="submit"><i class="fas fa-paper-plane"></i></button>
+                        <button type="submit" class="message-send-button" aria-label="Send message"><i class="fas fa-paper-plane"></i></button>
                     </form>
                     <div class="voice-preview d-none"></div>
                 </div>

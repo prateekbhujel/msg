@@ -23,12 +23,14 @@ const messageForm             = $(".message-form"),
       auth_id                 = $("meta[name=auth_id]").attr("content"),
       assetUrl                = $("meta[name=asset-url]").attr("content") || `${window.location.origin}/`,
       messengerContactBox     = $(".messenger-contacts"),
+      composerShell           = $(".footer_message"),
       attachmentInput         = $(".attachment-input"),
       attachmentPreviewBlock  = $(".attachment-block"),
       attachmentPreviewList   = $(".attachment-preview-list"),
       voicePreview            = $(".voice-preview"),
       voiceRecordToggle       = $(".voice-record-toggle"),
-      voiceRecordStatus       = $(".voice-record-status");
+      voiceRecordStatus       = $(".voice-record-status"),
+      voiceRecordToggleIcon   = $(".voice-record-toggle i");
 
 const getMessengerId          = () => $("meta[name=id]").attr("content");
 const setMessengerId          = (id) => $("meta[name=id]").attr("content", id);
@@ -120,6 +122,84 @@ function escapeHtml(value)
         .replaceAll("'", '&#039;');
 }
 
+function toggleComposerState(className, active = false)
+{
+    composerShell.toggleClass(className, !!active);
+}
+
+function setVoiceRecordButtonState(active = false)
+{
+    voiceRecordToggle.toggleClass('active', active);
+    voiceRecordToggle.attr('aria-pressed', active ? 'true' : 'false');
+    voiceRecordToggle.attr('title', active ? 'Stop recording' : 'Record voice note');
+    voiceRecordToggle.attr('aria-label', active ? 'Stop recording' : 'Record voice note');
+
+    if (voiceRecordToggleIcon.length) {
+        voiceRecordToggleIcon.toggleClass('fa-microphone', !active);
+        voiceRecordToggleIcon.toggleClass('fa-stop', active);
+    }
+}
+
+function formatFileSize(bytes)
+{
+    const value = Number(bytes || 0);
+
+    if (!Number.isFinite(value) || value <= 0) {
+        return '';
+    }
+
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let size = value;
+    let unitIndex = 0;
+
+    while (size >= 1024 && unitIndex < units.length - 1) {
+        size /= 1024;
+        unitIndex += 1;
+    }
+
+    const precision = size >= 10 || unitIndex === 0 ? 0 : 1;
+
+    return `${size.toFixed(precision)} ${units[unitIndex]}`;
+}
+
+function renderVoiceWaveBars()
+{
+    return '<span></span><span></span><span></span><span></span><span></span>';
+}
+
+function formatAttachmentTypeLabel(type)
+{
+    switch (type) {
+        case 'image':
+            return 'Photo';
+        case 'audio':
+            return 'Audio';
+        case 'video':
+            return 'Video';
+        default:
+            return 'File';
+    }
+}
+
+function guessAttachmentTypeFromPath(path)
+{
+    const extension = String(path || '').split('.').pop()?.toLowerCase() || '';
+
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'avif'].includes(extension)) {
+        return 'image';
+    }
+
+    if (['mp3', 'wav', 'ogg', 'm4a', 'aac'].includes(extension)) {
+        return 'audio';
+    }
+
+    if (['mp4', 'mov', 'mkv', 'avi', 'webm'].includes(extension)) {
+        return 'video';
+    }
+
+    return 'file';
+}
+
 function normalizeAttachments(attachments, messageType = 'text')
 {
     if (Array.isArray(attachments) && attachments.length > 0) {
@@ -128,7 +208,7 @@ function normalizeAttachments(attachments, messageType = 'text')
                 return {
                     path: attachment,
                     name: attachment.split('/').pop(),
-                    type: messageType === 'voice' ? 'audio' : 'image',
+                    type: messageType === 'voice' ? 'audio' : guessAttachmentTypeFromPath(attachment),
                 };
             }
 
@@ -141,7 +221,7 @@ function normalizeAttachments(attachments, messageType = 'text')
             {
                 path: attachments,
                 name: attachments.split('/').pop(),
-                type: messageType === 'voice' ? 'audio' : 'image',
+                type: messageType === 'voice' ? 'audio' : guessAttachmentTypeFromPath(attachments),
             },
         ];
     }
@@ -151,23 +231,23 @@ function normalizeAttachments(attachments, messageType = 'text')
 
 function guessAttachmentTypeFromFile(file)
 {
-    if (!file || !file.type) {
+    if (!file) {
         return 'file';
     }
 
-    if (file.type.startsWith('image/')) {
+    if (file.type && file.type.startsWith('image/')) {
         return 'image';
     }
 
-    if (file.type.startsWith('audio/')) {
+    if (file.type && file.type.startsWith('audio/')) {
         return 'audio';
     }
 
-    if (file.type.startsWith('video/')) {
+    if (file.type && file.type.startsWith('video/')) {
         return 'video';
     }
 
-    return 'file';
+    return guessAttachmentTypeFromPath(file.name || '');
 }
 
 function formatCallStatusLabel(status)
@@ -209,6 +289,7 @@ function renderAttachmentPreview()
     if (!files.length) {
         attachmentPreviewList.empty();
         attachmentPreviewBlock.addClass('d-none');
+        toggleComposerState('has-attachments', false);
         return;
     }
 
@@ -224,23 +305,33 @@ function renderAttachmentPreview()
                 : attachmentType === 'file'
                     ? 'fas fa-file-alt'
                     : 'fas fa-image';
+        const fileSize = formatFileSize(file.size);
+        const attachmentLabel = formatAttachmentTypeLabel(attachmentType);
 
         const mediaMarkup = attachmentType === 'image'
             ? `<img src="${url}" alt="${safeFileName}" class="attachment-preview-media attachment-preview-media-image">`
-            : `<div class="attachment-preview-placeholder"><i class="${icon} fs-3 text-primary"></i></div>`;
+            : attachmentType === 'video'
+                ? `<video class="attachment-preview-media attachment-preview-media-video" controls muted playsinline preload="metadata"><source src="${url}" type="${file.type || 'video/mp4'}"></video>`
+                : attachmentType === 'audio'
+                    ? `<audio class="attachment-preview-media attachment-preview-media-audio" controls preload="metadata"><source src="${url}" type="${file.type || 'audio/mpeg'}"></audio>`
+                    : `<div class="attachment-preview-placeholder"><i class="${icon} fs-3 text-primary"></i></div>`;
 
         return `
-            <div class="attachment-preview-card">
+            <div class="attachment-preview-card" data-attachment-type="${attachmentType}">
                 <div class="attachment-preview-media-wrap">
                     ${mediaMarkup}
                 </div>
-                <span class="attachment-preview-name" title="${safeFileName}">${truncateText(safeFileName, 18)}</span>
+                <div class="attachment-preview-meta">
+                    <span class="attachment-preview-name" title="${safeFileName}">${truncateText(safeFileName, 18)}</span>
+                    <span class="attachment-preview-badge">${attachmentLabel}${fileSize ? ` • ${fileSize}` : ''}</span>
+                </div>
             </div>
         `;
     }).join('');
 
     attachmentPreviewList.html(markup);
     attachmentPreviewBlock.removeClass('d-none');
+    toggleComposerState('has-attachments', true);
 }
 
 function clearComposerAttachments()
@@ -249,6 +340,7 @@ function clearComposerAttachments()
     attachmentInput.val('');
     attachmentPreviewList.empty();
     attachmentPreviewBlock.addClass('d-none');
+    toggleComposerState('has-attachments', false);
 }
 
 function clearVoiceRecordingPreview()
@@ -261,6 +353,7 @@ function clearVoiceRecordingPreview()
     voiceRecordingBlob = null;
     voicePreview.addClass('d-none').empty();
     updateComposerVoiceStatus('', false);
+    toggleComposerState('has-voice-preview', false);
 }
 
 function resetVoiceRecordingState()
@@ -277,6 +370,8 @@ function resetVoiceRecordingState()
     voiceRecordingStream = null;
     voiceRecordingChunks = [];
     voiceRecordingActive = false;
+    toggleComposerState('is-recording', false);
+    setVoiceRecordButtonState(false);
 
     if (voiceRecordingStopResolver) {
         voiceRecordingStopResolver();
@@ -319,8 +414,9 @@ async function startVoiceRecording()
         voiceRecordingChunks = [];
         voiceRecorder = new MediaRecorder(voiceRecordingStream);
         voiceRecordingActive = true;
-        voiceRecordToggle.addClass('active');
-        voiceRecordToggle.attr('aria-pressed', 'true');
+        const recorder = voiceRecorder;
+        toggleComposerState('is-recording', true);
+        setVoiceRecordButtonState(true);
 
         voiceRecorder.ondataavailable = (event) => {
             if (event.data && event.data.size > 0) {
@@ -329,7 +425,7 @@ async function startVoiceRecording()
         };
 
         voiceRecorder.onstop = () => {
-            const mimeType = voiceRecorder.mimeType || 'audio/webm';
+            const mimeType = recorder?.mimeType || 'audio/webm';
             const blob = new Blob(voiceRecordingChunks, { type: mimeType });
 
             if (voiceRecordingStream) {
@@ -337,6 +433,7 @@ async function startVoiceRecording()
             }
 
             voiceRecordingBlob = blob.size > 0 ? blob : null;
+            toggleComposerState('is-recording', false);
 
             if (voiceRecordingBlob) {
                 if (voiceRecordingUrl) {
@@ -346,21 +443,33 @@ async function startVoiceRecording()
                 voiceRecordingUrl = URL.createObjectURL(voiceRecordingBlob);
                 voicePreview.html(`
                     <div class="voice-note-card">
-                        <i class="fas fa-microphone text-danger fs-5"></i>
-                        <div class="flex-grow-1">
-                            <div class="fw-semibold">Voice note ready</div>
+                        <div class="voice-note-icon">
+                            <i class="fas fa-microphone"></i>
+                        </div>
+                        <div class="flex-grow-1 min-w-0">
+                            <div class="voice-note-head">
+                                <div class="min-w-0">
+                                    <div class="voice-note-title">Voice note ready</div>
+                                    <div class="voice-note-subtitle">${formatFileSize(voiceRecordingBlob.size) || 'Tap play to review'}</div>
+                                </div>
+                                <div class="voice-note-wave" aria-hidden="true">
+                                    ${renderVoiceWaveBars()}
+                                </div>
+                            </div>
                             <audio controls preload="none" class="w-100 mt-2">
                                 <source src="${voiceRecordingUrl}" type="${mimeType}">
                             </audio>
                         </div>
                     </div>
                 `).removeClass('d-none');
+                toggleComposerState('has-voice-preview', true);
+            } else {
+                toggleComposerState('has-voice-preview', false);
             }
 
             voiceRecordingChunks = [];
             voiceRecordingActive = false;
-            voiceRecordToggle.removeClass('active');
-            voiceRecordToggle.attr('aria-pressed', 'false');
+            setVoiceRecordButtonState(false);
             updateComposerVoiceStatus('', false);
 
             if (voiceRecordingStopResolver) {
@@ -373,8 +482,8 @@ async function startVoiceRecording()
         voiceRecorder.start();
     } catch (error) {
         voiceRecordingActive = false;
-        voiceRecordToggle.removeClass('active');
-        voiceRecordToggle.attr('aria-pressed', 'false');
+        setVoiceRecordButtonState(false);
+        toggleComposerState('is-recording', false);
         updateComposerVoiceStatus('', false);
         notyf.error('Unable to access your microphone.');
     }
@@ -421,7 +530,7 @@ function renderMessageMedia(attachments, messageType = 'text', messageId = null)
 
                 if (attachmentType === 'video') {
                     return `
-                        <video controls playsinline class="w-100 rounded-4" preload="metadata" style="max-height: 320px; object-fit: cover;">
+                        <video controls playsinline class="w-100 rounded-4 message-media-video" preload="metadata">
                             <source src="${attachmentUrl}" type="${attachment.mime || 'video/mp4'}">
                         </video>
                     `;
@@ -490,11 +599,33 @@ function renderReceivedMessageCard(e)
     const mediaMarkup = renderMessageMedia(attachments, messageType, e.id);
 
     if (messageType === 'voice') {
+        const voiceAttachment = attachments[0] || null;
+        const voiceUrl = voiceAttachment?.path ? resolveAssetUrl(voiceAttachment.path) : '';
+        const voiceMime = voiceAttachment?.mime || 'audio/webm';
+        const voiceSize = formatFileSize(voiceAttachment?.size);
+
         return `
             <div class="wsus__single_chat_area message-card" data-id="${e.id}" data-message-type="voice">
                 <div class="wsus__single_chat ${isMine ? 'chat_right' : ''}">
-                    ${body ? `<p class="messages">${body}</p>` : ''}
-                    ${mediaMarkup}
+                    <div class="voice-note-card voice-note-card--message">
+                        <div class="voice-note-icon">
+                            <i class="fas fa-microphone"></i>
+                        </div>
+                        <div class="flex-grow-1 min-w-0">
+                            <div class="voice-note-head">
+                                <div class="min-w-0">
+                                    <div class="voice-note-title">${body || 'Voice note'}</div>
+                                    <div class="voice-note-subtitle">Tap play to listen${voiceSize ? ` · ${voiceSize}` : ''}</div>
+                                </div>
+                                <div class="voice-note-wave" aria-hidden="true">
+                                    ${renderVoiceWaveBars()}
+                                </div>
+                            </div>
+                            <audio controls preload="none" class="w-100 mt-2">
+                                <source src="${voiceUrl}" type="${voiceMime}">
+                            </audio>
+                        </div>
+                    </div>
                     <span class="time">${messageTime}</span>
                     ${isMine ? `<a class="action dlt-message" href="javascript:void(0)" data-msgid="${e.id}"><i class="fas fa-trash"></i></a>` : ''}
                 </div>
@@ -733,8 +864,10 @@ function messageFormReset()
     clearComposerAttachments();
     clearVoiceRecordingPreview();
     resetVoiceRecordingState();
-    voiceRecordToggle.removeClass('active');
-    voiceRecordToggle.attr('aria-pressed', 'false');
+    toggleComposerState('has-attachments', false);
+    toggleComposerState('has-voice-preview', false);
+    toggleComposerState('is-recording', false);
+    setVoiceRecordButtonState(false);
     updateComposerVoiceStatus('', false);
     messageForm.trigger("reset");
     var emojiElt = $("#example1").emojioneArea();

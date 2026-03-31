@@ -137,14 +137,28 @@
     }
 
     .wsus__chat_area_footer form {
-        padding-left: 138px;
-        padding-right: 50px;
+        padding-left: 136px;
+        padding-right: 54px;
     }
 
     .wsus__chat_area_footer .footer_message .composer-actions {
         left: 12px;
-        top: 8px;
+        top: 50%;
+        transform: translateY(-50%);
         gap: 6px;
+    }
+
+    .wsus__chat_area_footer .footer_message .voice-record-toggle,
+    .wsus__chat_area_footer form .file label {
+        width: 38px;
+        height: 38px;
+        line-height: 38px;
+    }
+
+    .wsus__chat_area_footer form .message-send-button {
+        width: 40px;
+        height: 40px;
+        line-height: 40px;
     }
 
     .wsus__chat_area_footer .footer_message .attachment-preview-list {
@@ -255,14 +269,28 @@
     }
 
     .wsus__chat_area_footer form {
-        padding-left: 138px;
-        padding-right: 48px;
+        padding-left: 132px;
+        padding-right: 50px;
     }
 
     .wsus__chat_area_footer .footer_message .composer-actions {
         left: 12px;
-        top: 8px;
+        top: 50%;
+        transform: translateY(-50%);
         gap: 6px;
+    }
+
+    .wsus__chat_area_footer .footer_message .voice-record-toggle,
+    .wsus__chat_area_footer form .file label {
+        width: 36px;
+        height: 36px;
+        line-height: 36px;
+    }
+
+    .wsus__chat_area_footer form .message-send-button {
+        width: 38px;
+        height: 38px;
+        line-height: 38px;
     }
 
     .wsus__chat_area_footer .footer_message .attachment-preview-list {
@@ -372,14 +400,29 @@
     }
 
     .wsus__chat_area_footer form {
-        padding-left: 132px;
-        padding-right: 46px;
+        padding-left: 128px;
+        padding-right: 48px;
     }
 
     .wsus__chat_area_footer .footer_message .composer-actions {
         left: 10px;
-        top: 8px;
+        top: 50%;
+        transform: translateY(-50%);
         gap: 6px;
+    }
+
+    .wsus__chat_area_footer .footer_message .voice-record-toggle,
+    .wsus__chat_area_footer form .file label {
+        width: 34px;
+        height: 34px;
+        line-height: 34px;
+        border-radius: 12px;
+    }
+
+    .wsus__chat_area_footer form .message-send-button {
+        width: 36px;
+        height: 36px;
+        line-height: 36px;
     }
 
     .wsus__chat_area_footer .footer_message .attachment-preview-list {

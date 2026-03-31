@@ -11,7 +11,7 @@
         <h3 class="user_name"></h3>
         <span class="user_unique_name text-primary"></span>
         {{-- <a href="#" class="delete_chat">Delete Conversation</a> --}}
-        <p class="photo_gallery">Shared Photos</p>
+        <p class="photo_gallery">Shared Media</p>
         <span class="nothing_share d-none">Nothing shared yet</span>
 
         <ul class="wsus__chat_info_gallery">

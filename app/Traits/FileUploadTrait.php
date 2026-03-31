@@ -66,7 +66,7 @@ Trait FileUploadTrait
      * @param string $storedPath
      * @return array<string, mixed>
      */
-    public function buildAttachmentPayload(UploadedFile $file, string $storedPath): array
+    public function buildAttachmentPayload(UploadedFile $file, string $storedPath, ?string $forcedType = null): array
     {
         $mime = $file->getClientMimeType();
         $extension = strtolower($file->getClientOriginalExtension() ?: $file->guessExtension() ?: '');
@@ -75,23 +75,78 @@ Trait FileUploadTrait
             'path' => $storedPath,
             'name' => $file->getClientOriginalName(),
             'mime' => $mime,
-            'type' => $this->detectAttachmentType($mime, $extension),
-            'size' => $file->getSize(),
+            'type' => $forcedType ?: $this->detectAttachmentType($mime, $extension),
+            'size' => $this->resolveAttachmentSize($file, $storedPath),
         ];
     }
 
     protected function storeUploadedFile(UploadedFile $file, string $path = 'uploads'): string
     {
-        if (! is_dir(public_path($path))) {
-            mkdir(public_path($path), 0775, true);
+        $directory = $this->resolveUploadDirectory($path);
+
+        if (! is_dir($directory)) {
+            mkdir($directory, 0775, true);
+        }
+
+        if (! is_writable($directory)) {
+            @chmod($directory, 0775);
+        }
+
+        if (! is_writable($directory)) {
+            @chmod($directory, 0777);
+        }
+
+        if (! is_writable($directory)) {
+            throw new \RuntimeException("Unable to write in the \"{$directory}\" directory.");
         }
 
         $ext = $file->getClientOriginalExtension() ?: $file->guessExtension() ?: 'bin';
         $fileName = 'media_' . uniqid() . '.' . $ext;
 
-        $file->move(public_path($path), $fileName);
+        $file->move($directory, $fileName);
 
         return $path . '/' . $fileName;
+    }
+
+    protected function resolveAttachmentSize(UploadedFile $file, string $storedPath): ?int
+    {
+        try {
+            $size = $file->getSize();
+
+            if (is_int($size) && $size >= 0) {
+                return $size;
+            }
+        } catch (\Throwable $throwable) {
+            // The uploaded file may already have been moved to its final path.
+        }
+
+        $absolutePath = $this->resolveStoredUploadPath($storedPath);
+
+        if (is_file($absolutePath)) {
+            clearstatcache(true, $absolutePath);
+            $size = @filesize($absolutePath);
+
+            if ($size !== false) {
+                return (int) $size;
+            }
+        }
+
+        return null;
+    }
+
+    protected function resolveUploadBasePath(): string
+    {
+        return rtrim((string) config('messenger.upload_base_path', public_path()), DIRECTORY_SEPARATOR);
+    }
+
+    protected function resolveUploadDirectory(string $path): string
+    {
+        return $this->resolveUploadBasePath() . DIRECTORY_SEPARATOR . ltrim($path, DIRECTORY_SEPARATOR);
+    }
+
+    protected function resolveStoredUploadPath(string $storedPath): string
+    {
+        return $this->resolveUploadBasePath() . DIRECTORY_SEPARATOR . ltrim($storedPath, DIRECTORY_SEPARATOR);
     }
 
     protected function detectAttachmentType(?string $mime, string $extension): string

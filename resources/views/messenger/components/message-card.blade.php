@@ -38,7 +38,49 @@
             @endif
 
             @if ($message->isVoiceMessage())
-                <div class="small text-muted mb-2">Voice note</div>
+                @php
+                    $voiceAttachment = $message->primaryAttachment();
+                    $voiceUrl = $voiceAttachment ? asset($voiceAttachment['path']) : null;
+                    $voiceMime = $voiceAttachment['mime'] ?? 'audio/webm';
+                    $voiceSize = $voiceAttachment['size'] ?? null;
+                    $voiceSizeLabel = $voiceSize
+                        ? ($voiceSize >= 1048576
+                            ? number_format($voiceSize / 1048576, 1) . ' MB'
+                            : number_format($voiceSize / 1024, $voiceSize >= 10240 ? 0 : 1) . ' KB')
+                        : null;
+                @endphp
+
+                <div class="voice-note-card voice-note-card--message">
+                    <div class="voice-note-icon">
+                        <i class="fas fa-microphone"></i>
+                    </div>
+                    <div class="flex-grow-1 min-w-0">
+                        <div class="voice-note-head">
+                            <div class="min-w-0">
+                                <div class="voice-note-title">{{ $message->body ?: 'Voice note' }}</div>
+                                <div class="voice-note-subtitle">
+                                    Tap play to listen
+                                    @if ($voiceSize)
+                                        · {{ $voiceSizeLabel }}
+                                    @endif
+                                </div>
+                            </div>
+                            <div class="voice-note-wave" aria-hidden="true">
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                            </div>
+                        </div>
+
+                        @if ($voiceUrl)
+                            <audio controls preload="none" class="w-100 mt-2">
+                                <source src="{{ $voiceUrl }}" type="{{ $voiceMime }}">
+                            </audio>
+                        @endif
+                    </div>
+                </div>
             @endif
 
             @if (count($attachments) > 0)
@@ -65,7 +107,7 @@
                                 </audio>
                             </div>
                         @elseif ($attachmentType === 'video')
-                            <video controls playsinline class="w-100 rounded-4" preload="metadata" style="max-height: 320px; object-fit: cover;">
+                            <video controls playsinline class="w-100 rounded-4 message-media-video" preload="metadata">
                                 <source src="{{ $attachmentUrl }}" type="{{ $attachment['mime'] ?? 'video/mp4' }}">
                             </video>
                         @else

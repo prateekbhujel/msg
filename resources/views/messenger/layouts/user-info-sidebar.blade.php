@@ -1,6 +1,6 @@
 <div class="wsus__chat_info">
     <div class="wsus__chat_info_header">
-        <h5>User Details</h5>
+        <h5 class="messenger-info-title">User Details</h5>
         <span class="user_info_close"><i class="far fa-times"></i></span>
     </div>
 
@@ -10,6 +10,10 @@
         </div>
         <h3 class="user_name"></h3>
         <span class="user_unique_name text-primary"></span>
+        <div class="conversation-member-panel d-none">
+            <p class="photo_gallery">Members</p>
+            <ul class="conversation-member-list"></ul>
+        </div>
         {{-- <a href="#" class="delete_chat">Delete Conversation</a> --}}
         <p class="photo_gallery">Shared Media</p>
         <span class="nothing_share d-none">Nothing shared yet</span>

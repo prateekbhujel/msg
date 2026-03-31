@@ -137,14 +137,12 @@
     }
 
     .wsus__chat_area_footer form {
-        padding-left: 122px;
-        padding-right: 50px;
+        padding: 10px 12px;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        gap: 10px;
     }
 
     .wsus__chat_area_footer .footer_message .composer-actions {
-        left: 12px;
-        top: 50%;
-        transform: translateY(-50%);
         gap: 6px;
     }
 
@@ -269,14 +267,12 @@
     }
 
     .wsus__chat_area_footer form {
-        padding-left: 118px;
-        padding-right: 48px;
+        padding: 10px 12px;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        gap: 10px;
     }
 
     .wsus__chat_area_footer .footer_message .composer-actions {
-        left: 12px;
-        top: 50%;
-        transform: translateY(-50%);
         gap: 6px;
     }
 
@@ -388,7 +384,8 @@
     }
 
     .emojionearea .emojionearea-picker.emojionearea-picker-position-top {
-        left: -120px;
+        left: auto !important;
+        right: 0;
     }
 
     .wsus__chat_area_footer {
@@ -400,14 +397,12 @@
     }
 
     .wsus__chat_area_footer form {
-        padding-left: 114px;
-        padding-right: 46px;
+        padding: 10px 12px;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        gap: 10px;
     }
 
     .wsus__chat_area_footer .footer_message .composer-actions {
-        left: 10px;
-        top: 50%;
-        transform: translateY(-50%);
         gap: 6px;
     }
 

@@ -33,9 +33,16 @@ class Message implements ShouldBroadcast
      */
     public function broadcastOn(): array
     {
-        return [
-            new PrivateChannel('message.' . $this->message->to_id), // Example: 'message.1' or 'message.2' or so on...
-        ];
+        $recipientIds = $this->message->isGroupMessage()
+            ? collect($this->message->broadcastRecipientIds())->reject(fn ($id) => (int) $id === (int) $this->message->from_id)
+            : collect([(int) $this->message->to_id]);
+
+        return $recipientIds
+            ->filter(fn ($id) => (int) $id > 0)
+            ->unique()
+            ->map(fn ($id) => new PrivateChannel('message.' . $id))
+            ->values()
+            ->all();
     }
 
 
@@ -52,6 +59,10 @@ class Message implements ShouldBroadcast
             'id'            => $this->message->id,
             'body'          => $this->message->body,
             'to_id'         => $this->message->to_id,
+            'group_id'      => $this->message->group_id,
+            'conversation_key' => $this->message->isGroupMessage()
+                ? 'group:' . (int) $this->message->group_id
+                : 'user:' . (int) $this->message->from_id,
             'reply_to_id'   => $this->message->reply_to_id,
             'reply_preview' => $this->message->replyPreviewPayload((int) $this->message->to_id),
             'attachment'    => $attachments[0]['path'] ?? null,
@@ -60,6 +71,7 @@ class Message implements ShouldBroadcast
             'meta'          => $this->message->meta ?? [],
             'reactions'     => $this->message->reactionSummary((int) $this->message->to_id),
             'from_id'       => $this->message->from_id,
+            'from_name'     => $this->message->fromUser?->name,
             'created_at'    => $this->message->created_at?->toIso8601String(),
         ];
         

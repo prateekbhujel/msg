@@ -35,6 +35,7 @@
     $replyAuthor = $message->replyAuthorLabel($viewerId);
     $reactionSummary = $message->reactionSummary($viewerId);
     $reactionOptions = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
+    $showSenderLabel = $message->isGroupMessage() && ! $isMine && ! $message->isCallMessage();
 @endphp
 
 <div
@@ -63,6 +64,10 @@
                 </div>
             </div>
         @else
+            @if ($showSenderLabel)
+                <span class="message-sender-label">{{ $message->fromUser?->name ?: 'Group member' }}</span>
+            @endif
+
             @if ($replyPreview)
                 <button type="button" class="message-reply-snippet" data-reply-jump="{{ $replyPreview['id'] }}">
                     <span class="message-reply-snippet__label">{{ $replyPreview['sender_label'] }}</span>

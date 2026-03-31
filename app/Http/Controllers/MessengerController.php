@@ -4,59 +4,53 @@ namespace App\Http\Controllers;
 
 use App\Events\Message as MessageEvent;
 use App\Events\MessageReactionUpdated;
+use App\Events\TypingIndicatorUpdated;
+use App\Models\ChatGroup;
+use App\Models\ChatGroupMember;
 use App\Models\Favourite;
 use App\Models\Message;
 use App\Models\User;
 use App\Traits\FileUploadTrait;
-use Illuminate\Http\UploadedFile;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class MessengerController extends Controller
 {
     use FileUploadTrait;
 
-
-    /**
-     * Displays the main messenger interface.
-     *
-     * This method returns the view for the main messenger interface, which allows users to send and receive messages.
-     *
-     * @return \Illuminate\View\View The view for the main messenger interface.
-    */
     public function index()
     {
-        $favoriteList = Favourite::with('user:id,name,avatar')->where('user_id', Auth::user()->id)->get();
+        $favoriteList = Favourite::with('user:id,name,avatar,user_name')
+            ->where('user_id', Auth::id())
+            ->get();
 
-        return view('messenger.index', compact('favoriteList'));
+        $groupCandidates = User::query()
+            ->whereKeyNot(Auth::id())
+            ->orderBy('name')
+            ->get(['id', 'name', 'avatar', 'user_name']);
 
-    } //End Method
+        return view('messenger.index', compact('favoriteList', 'groupCandidates'));
+    }
 
-
-    /**
-     * Searches for users based on the provided query and returns the search results.
-     *
-     * This method takes a search query from the request, and returns a JSON response containing the search results. The search is performed on the user's name and username, and the results are paginated.
-     *
-     * @param \Illuminate\Http\Request $request The incoming HTTP request, which must contain the search query.
-     * @return \Illuminate\Http\JsonResponse A JSON response containing the search results and the last page of the pagination.
-    */
     public function search(Request $request)
     {
         $getRecords = null;
         $input = $request['query'];
 
-        $records = User::where('id', '!=', Auth::user()->id)
-            ->where(function ($q) use ($input) {
-                $q->where('name', 'LIKE', "%{$input}%")
+        $records = User::where('id', '!=', Auth::id())
+            ->where(function ($query) use ($input) {
+                $query->where('name', 'LIKE', "%{$input}%")
                     ->orWhere('user_name', 'LIKE', "%{$input}%");
-            })->paginate(10);
+            })
+            ->paginate(10);
 
         if ($records->total() < 1) {
             $getRecords = '<p class="text-center mt-3"> No results found. </p>';
         }
+
         foreach ($records as $record) {
             $getRecords .= view('messenger.components.search-item', compact('record'))->render();
         }
@@ -65,32 +59,81 @@ class MessengerController extends Controller
             'records' => $getRecords,
             'last_page' => $records->lastPage(),
         ]);
-    } //End Method
+    }
 
-
-    /**
-     * Fetches user information for the specified user ID.
-     *
-     * This method takes a request containing the user ID, and returns a JSON response with the fetched user information.
-     *
-     * @param \Illuminate\Http\Request $request The incoming HTTP request, which must contain the user ID.
-     * @return \Illuminate\Http\JsonResponse A JSON response containing the fetched user information.
-    */
     public function fetchIdInfo(Request $request)
     {
-        $fetch          = User::where('id', $request['id'])->first();
-
-        $favorite       = Favourite::where(['user_id' => Auth::user()->id, 'favourite_id' => $fetch->id])->exists();
-        
-        $sharedPhotos   =   Message::where(function ($q) use ($request) {
-                                $q->where('from_id', Auth::user()->id)->where('to_id', $request->id)->whereNotNull('attachment');
-                            })->orWhere(function ($q) use ($request) {
-                                $q->where('from_id', $request->id)->where('to_id', Auth::user()->id)->whereNotNull('attachment');
-                            })->latest()->get();
-
+        $conversation = $this->resolveConversationFromRequest($request);
         $content = '';
-        foreach ($sharedPhotos as $photo) 
-        {
+
+        if ($conversation['type'] === 'group') {
+            /** @var \App\Models\ChatGroup $group */
+            $group = $conversation['group']->loadMissing('members:id,name,avatar,user_name');
+
+            $sharedMedia = Message::query()
+                ->where('group_id', $group->id)
+                ->whereNotNull('attachment')
+                ->latest()
+                ->get();
+
+            foreach ($sharedMedia as $photo) {
+                foreach ($photo->attachmentItems() as $attachment) {
+                    if (! in_array(($attachment['type'] ?? null), ['image', 'video'], true)) {
+                        continue;
+                    }
+
+                    $content .= view('messenger.components.gallery-item', [
+                        'photo' => $photo,
+                        'attachment' => $attachment,
+                    ])->render();
+                }
+            }
+
+            return response()->json([
+                'type' => 'group',
+                'favorite' => false,
+                'conversation_key' => $conversation['conversation_key'],
+                'shared_photos' => $content,
+                'group' => [
+                    'id' => (int) $group->id,
+                    'name' => $group->name,
+                    'avatar' => $group->avatarPath(),
+                    'user_name' => $group->memberCount() . ' members',
+                    'member_count' => $group->memberCount(),
+                ],
+                'members' => $group->members->map(fn (User $member) => [
+                    'id' => (int) $member->id,
+                    'name' => $member->name,
+                    'avatar' => $member->avatar,
+                    'user_name' => $member->user_name,
+                ])->values(),
+            ]);
+        }
+
+        /** @var \App\Models\User $user */
+        $user = $conversation['user'];
+        $favorite = Favourite::where([
+            'user_id' => Auth::id(),
+            'favourite_id' => $user->id,
+        ])->exists();
+
+        $sharedPhotos = Message::query()
+            ->whereNull('group_id')
+            ->where(function ($query) use ($user) {
+                $query->where(function ($nested) use ($user) {
+                    $nested->where('from_id', Auth::id())
+                        ->where('to_id', $user->id)
+                        ->whereNotNull('attachment');
+                })->orWhere(function ($nested) use ($user) {
+                    $nested->where('from_id', $user->id)
+                        ->where('to_id', Auth::id())
+                        ->whereNotNull('attachment');
+                });
+            })
+            ->latest()
+            ->get();
+
+        foreach ($sharedPhotos as $photo) {
             foreach ($photo->attachmentItems() as $attachment) {
                 if (! in_array(($attachment['type'] ?? null), ['image', 'video'], true)) {
                     continue;
@@ -101,30 +144,23 @@ class MessengerController extends Controller
                     'attachment' => $attachment,
                 ])->render();
             }
-
         }
 
         return response()->json([
-            'fetch'          => $fetch,
-            'favorite'       => $favorite,
-            'shared_photos'  => $content,
+            'type' => 'user',
+            'conversation_key' => $conversation['conversation_key'],
+            'fetch' => $user,
+            'favorite' => $favorite,
+            'shared_photos' => $content,
+            'members' => [],
         ]);
-        
-    } //End Method
+    }
 
-
-    /**
-     * Sends a message from the authenticated user to the user with the specified ID.
-     *
-     * This method is responsible for handling the process of sending a message from the authenticated user to another user. It performs several tasks, including validating the incoming request, uploading any attached file, creating a new message record, and returning a JSON response containing the message card HTML and the temporary message ID. Additionally, it dispatches a MessageEvent to notify the recipient about the new message.
-     *
-     * @param \Illuminate\Http\Request $request The incoming HTTP request, which must contain the ID of the recipient, the temporary message ID, and an optional file attachment.
-     * @return \Illuminate\Http\JsonResponse A JSON response containing the message card HTML and the temporary message ID.
-    */
     public function sendMessage(Request $request)
     {
         $request->validate([
-            'id' => ['required', 'integer'],
+            'id' => ['nullable', 'integer'],
+            'conversation_key' => ['nullable', 'string'],
             'temporaryMsgId' => ['required'],
             'message' => ['nullable', 'string', 'max:5000'],
             'reply_to_id' => ['nullable', 'integer'],
@@ -135,17 +171,19 @@ class MessengerController extends Controller
             'voice_duration_seconds' => ['nullable', 'integer', 'min:0', 'max:120'],
         ]);
 
-        $replyToMessage = $this->resolveReplyTarget($request);
+        $conversation = $this->resolveConversationFromRequest($request);
+        $replyToMessage = $this->resolveReplyTarget($request, $conversation);
         $attachments = $this->collectAttachments($request);
         $voiceAttachment = $this->collectVoiceAttachment($request);
         $allAttachments = array_merge($attachments, $voiceAttachment ? [$voiceAttachment] : []);
         $voiceDurationSeconds = (int) $request->integer('voice_duration_seconds', 0);
 
         $message = new Message();
-        $message->from_id = Auth::user()->id;
-        $message->to_id = $request->id;
+        $message->from_id = Auth::id();
+        $message->to_id = $conversation['type'] === 'user' ? (int) $conversation['user']->id : null;
+        $message->group_id = $conversation['type'] === 'group' ? (int) $conversation['group']->id : null;
         $message->reply_to_id = $replyToMessage?->id;
-        $message->message_type = $voiceAttachment && empty($attachments) ? 'voice' : (!empty($allAttachments) ? 'media' : 'text');
+        $message->message_type = $voiceAttachment && empty($attachments) ? 'voice' : (! empty($allAttachments) ? 'media' : 'text');
         $message->body = $request->message;
         $message->meta = array_filter([
             'duration_seconds' => $voiceDurationSeconds > 0 ? $voiceDurationSeconds : null,
@@ -154,59 +192,39 @@ class MessengerController extends Controller
         if (! empty($allAttachments)) {
             $message->attachment = $allAttachments;
         }
-        
-        $message->save();
-        $message->loadMissing(['replyTo.fromUser']);
 
-        //Boradcast the message Event only if the 
-        //user is sending someone else not themselves
-        if (auth()->user()->id != $request->id) {
+        $message->save();
+        $message->loadMissing(['fromUser:id,name,avatar,user_name', 'replyTo.fromUser', 'group.members:id,name']);
+
+        if ($conversation['type'] === 'group') {
+            $this->markGroupConversationRead((int) $conversation['group']->id, Auth::id(), (int) $message->id);
+        }
+
+        if (
+            ($conversation['type'] === 'user' && Auth::id() !== (int) $conversation['user']->id)
+            || ($conversation['type'] === 'group' && count($message->broadcastRecipientIds()) > 1)
+        ) {
             $this->dispatchBroadcastSafely(static fn () => MessageEvent::dispatch($message));
         }
 
         return response()->json([
             'message' => $this->messageCard($message),
             'tempID' => $request->temporaryMsgId,
+            'conversation_key' => $conversation['conversation_key'],
         ]);
+    }
 
-    }//End Method
-
-
-    /**
-     * Generates a message card HTML for a given message.
-     *
-     * This method takes a message object and an optional boolean flag indicating whether the message has an attachment. It then renders a view that generates the HTML for the message card, which can be used to display the message in the user interface.
-     *
-     * @param \App\Models\Message $message The message object for which to generate the message card.
-     * @param bool $attachment Whether the message has an attachment.
-     * @return string The rendered HTML for the message card.
-    */
-    public function messageCard($message, $attachment = false)
+    public function messageCard($message)
     {
         return view('messenger.components.message-card', compact('message'))->render();
+    }
 
-    } //End Method
-
-
-    /**
-     * Fetches a paginated list of messages between the authenticated user and the user with the specified ID.
-     *
-     * This method retrieves a paginated list of messages between the authenticated user and the user with the specified ID.
-     * The messages are ordered by the latest message first, and 20 messages are returned per page.
-     *
-     * @param \Illuminate\Http\Request $request The incoming HTTP request, which must contain the ID of the user to fetch messages for.
-     * @return \Illuminate\Http\JsonResponse A JSON response containing the list of messages, the last page number, and the last message.
-    */
     public function fetchMessages(Request $request)
     {
-        $messages = Message::with(['replyTo.fromUser'])
-                        ->where(function ($q) use ($request) {
-                            $q->where('from_id', Auth::id())
-                                ->where('to_id', $request->id);
-                        })->orWhere(function ($q) use ($request) {
-                            $q->where('from_id', $request->id)
-                                ->where('to_id', Auth::id());
-                        })->latest()->paginate(20);
+        $conversation = $this->resolveConversationFromRequest($request);
+        $messages = $this->conversationMessagesQuery($conversation)
+            ->latest()
+            ->paginate(20);
 
         $response = [
             'last_page' => $messages->lastPage(),
@@ -215,7 +233,13 @@ class MessengerController extends Controller
         ];
 
         if (count($messages) < 1) {
-            $name = User::where('id', $request->id)->first()->name;
+            $name = $conversation['type'] === 'group'
+                ? $conversation['group']->name
+                : $conversation['user']->name;
+
+            $prompt = $conversation['type'] === 'group'
+                ? "Kick off {$name} with the first message."
+                : "Say 'Hey 🖐️' to {$name} and start the conversation!!";
 
             $response['messages'] = "<div class='d-flex justify-content-center align-items-center h-100'>
                                             <p class='text-muted no_messages'>
@@ -224,178 +248,120 @@ class MessengerController extends Controller
                                         </div>
                                         <div class='d-flex justify-content-center align-items-center mb-4'>
                                             <p class='text-muted fst-italic mt-2 no_messages'>
-                                                Say 'Hey 🖐️' to {$name} and start the conversation!!
+                                                {$prompt}
                                             </p>
-                                        </div>
-                                    ";
+                                        </div>";
 
             return response()->json($response);
         }
 
         $allMessages = '';
         foreach ($messages->reverse() as $message) {
-            $allMessages .= $this->messageCard($message, $message->attachment ? true : false);
+            $allMessages .= $this->messageCard($message);
         }
 
         $response['messages'] = $allMessages;
 
         return response()->json($response);
+    }
 
-    } //End Method
-
-
-    /**
-     * Fetches a paginated list of contacts for the authenticated user.
-     *
-     * This method retrieves a list of users that the authenticated user has
-     * previously messaged, ordered by the most recent message. The list is
-     * paginated with 10 contacts per page.
-     *
-     * @param \Illuminate\Http\Request $request The incoming HTTP request.
-     * @return \Illuminate\Http\JsonResponse A JSON response containing the list of contacts and the last page number.
-    */
-    function fetchContacts()
+    public function fetchContacts()
     {
-        $users = Message::join('users', function ($join) {
-            $join->on('messages.from_id', '=', 'users.id')
-                ->orOn('messages.to_id', '=', 'users.id');
-        })
-            ->where(function ($q) {
-                $q->where('messages.from_id', Auth::user()->id)
-                    ->orWhere('messages.to_id', Auth::user()->id);
-            })
-            ->where('users.id', '!=', Auth::user()->id)
-            ->select('users.*', DB::raw('MAX(messages.created_at) max_created_at'))
-            ->orderBy('max_created_at', 'desc')
-            ->groupBy('users.id', 'users.avatar', 'users.name', 'users.user_name', 'users.email', 'users.email_verified_at', 'users.password', 'users.remember_token', 'users.created_at', 'users.updated_at')
-            ->paginate(10);
+        $authId = (int) Auth::id();
+        $directContacts = $this->buildDirectContacts($authId);
+        $groupContacts = $this->buildGroupContacts($authId);
 
-        if (count($users) > 0) {
-            $contacts = '';
-            foreach ($users as $user) {
-                $contacts .= $this->getContactItem($user);
-            }
+        $contacts = $directContacts
+            ->concat($groupContacts)
+            ->sortByDesc(fn (array $contact) => $contact['last_message_at'] ?: now()->subYears(30))
+            ->values();
+
+        if ($contacts->isEmpty()) {
+            $contactHtml = "<p class='text text-muted text-center mt-5 no_contact'>Your Contacts list is empty! 😥 </p>";
         } else {
-            $contacts = "<p class='text text-muted text-center mt-5 no_contact'>Your Contacts list is empty! 😥 </p>";
+            $contactHtml = $contacts
+                ->map(fn (array $contact) => $this->getContactItem($contact))
+                ->implode('');
         }
 
         return response()->json([
-            'contacts' => $contacts,
-            'last_page' => $users->lastPage()
+            'contacts' => $contactHtml,
+            'last_page' => 1,
         ]);
+    }
 
-    }//End Method
-
-
-    /**
-     * Generates a contact list item view for a given user.
-     *
-     * @param \App\Models\User $user The user to generate the contact list item for.
-     * @return string The rendered contact list item view.
-    */
-    public function getContactItem($user)
+    public function getContactItem(array $contact): string
     {
-        $lastMessage = Message::where(function ($q) use ($user) {
-            $q->where('from_id', Auth::id())
-                ->where('to_id', $user->id);
-        })->orWhere(function ($q) use ($user) {
-            $q->where('from_id', $user->id)
-                ->where('to_id', Auth::id());
-        })->latest()->first();
+        return view('messenger.components.contact-list-item', compact('contact'))->render();
+    }
 
-        $unseenCounter = Message::where(function ($q) use ($user) {
-            $q->where('from_id', $user->id)
-                ->where('to_id', Auth::user()->id)
-                ->where('seen', 0);
-        })->count();
-
-        return view('messenger.components.contact-list-item', compact('lastMessage', 'unseenCounter', 'user'))->render();
-    } //End Method
-
-
-    /**
-     * Updates the contact item for a given user.
-     *
-     * @param \Illuminate\Http\Request $request The request containing the user ID.
-     * @return \Illuminate\Http\JsonResponse The updated contact item.
-    */
-    function updateContactItem(Request $request)
+    public function updateContactItem(Request $request)
     {
-        //Gets the User data
-        $user = User::where('id', $request->user_id)->first();
+        $conversation = $this->resolveConversationFromRequest($request);
+        $authId = (int) Auth::id();
 
-        //Validating if the user cannt be find in db
-        if (!$user) {
-            return response()->json([
-                'message'   => 'User was not Found.'
-            ], 401);
+        if ($conversation['type'] === 'group') {
+            $contact = $this->buildGroupContact($conversation['group']->fresh(['members:id,name,avatar,user_name']), $authId);
+        } else {
+            $contact = $this->buildDirectContact($conversation['user'], $authId);
         }
 
-        $contactItem = $this->getContactItem($user);
         return response()->json([
-            'contact_item' => $contactItem
+            'contact_item' => $this->getContactItem($contact),
+            'conversation_key' => $conversation['conversation_key'],
         ], 200);
+    }
 
-    } //End Method
-
-
-    /**
-     * Marks all unseen messages from the given user as seen for the authenticated user.
-     *
-     * @param \Illuminate\Http\Request $request The request containing the ID of the user whose messages should be marked as seen.
-    */
     public function makeSeen(Request $request): bool
     {
-        Message::where('from_id', $request->id)
-            ->where('to_id', Auth::user()->id)
+        $conversation = $this->resolveConversationFromRequest($request);
+
+        if ($conversation['type'] === 'group') {
+            $latestMessageId = Message::query()
+                ->where('group_id', $conversation['group']->id)
+                ->max('id');
+
+            if ($latestMessageId) {
+                $this->markGroupConversationRead((int) $conversation['group']->id, (int) Auth::id(), (int) $latestMessageId);
+            }
+
+            return true;
+        }
+
+        Message::query()
+            ->whereNull('group_id')
+            ->where('from_id', $conversation['user']->id)
+            ->where('to_id', Auth::id())
             ->where('seen', 0)
             ->update(['seen' => 1]);
 
         return true;
-        
-    } //End Method
+    }
 
-
-    /**
-     * Toggles the favorite status of a user for a given item.
-     *
-     * If the item is not currently marked as a favorite, this method will create a new
-     * favorite record for the authenticated user and the given item. If the item is
-     * already marked as a favorite, this method will delete the existing favorite record.
-     *
-     * @param \Illuminate\Http\Request $request The request containing the ID of the item to toggle as a favorite.
-     * @return bool True if the favorite status was successfully toggled, false otherwise.
-    */
     public function favorite(Request $request)
     {
-        $query = Favourite::where(['user_id' => Auth::user()->id, 'favourite_id' => $request->id]);
-        $favoriteStatus = $query->exists(); // Bool : True, Or False : If Find
-        $user = User::where('id', $request->id)->first();
+        $conversation = $this->resolveConversationFromRequest($request);
+        abort_if($conversation['type'] !== 'user', 422, 'Groups cannot be favorited yet.');
 
-        if (!$favoriteStatus) {
-            $star = new Favourite();
-            $star->user_id = Auth::user()->id;
-            $star->favourite_id = $request->id;
-            $star->save();
+        $query = Favourite::where([
+            'user_id' => Auth::id(),
+            'favourite_id' => $conversation['user']->id,
+        ]);
 
-            return response(['status'=> 'added']);
+        if (! $query->exists()) {
+            $favorite = new Favourite();
+            $favorite->user_id = Auth::id();
+            $favorite->favourite_id = $conversation['user']->id;
+            $favorite->save();
 
-        } else 
-        {
-            $query->delete();
-            return response(['status'=> 'removed']);
+            return response(['status' => 'added']);
         }
 
-    }//End Method
+        $query->delete();
 
-    /**
-     * Deletes a message from the authenticated user's message history.
-     *
-     * This method first checks if the message being deleted belongs to the authenticated user. If so, it will delete the message and any associated attachment file. If the message does not belong to the authenticated user, the method will return without taking any action.
-     *
-     * @param \Illuminate\Http\Request $request The request containing the ID of the message to be deleted.
-     * @return \Illuminate\Http\JsonResponse A JSON response indicating the success of the delete operation.
-     */
+        return response(['status' => 'removed']);
+    }
+
     public function deleteMessage(Request $request)
     {
         $message = Message::findOrFail($request->message_id);
@@ -432,13 +398,92 @@ class MessengerController extends Controller
         }
 
         $message->toggleReaction((string) $request->string('emoji'), (int) Auth::id());
-        $message->refresh()->loadMissing(['replyTo.fromUser']);
+        $message->refresh()->loadMissing(['replyTo.fromUser', 'group.members:id,name']);
 
         $this->dispatchBroadcastSafely(static fn () => MessageReactionUpdated::dispatch($message));
 
         return response()->json([
             'message_id' => $message->id,
             'reactions' => $message->reactionSummary((int) Auth::id()),
+        ]);
+    }
+
+    public function createGroup(Request $request)
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:60'],
+            'members' => ['required', 'array', 'min:1'],
+            'members.*' => ['required', 'integer', 'exists:users,id', 'distinct'],
+        ]);
+
+        $memberIds = collect($data['members'])
+            ->map(fn ($id) => (int) $id)
+            ->reject(fn ($id) => $id === (int) Auth::id())
+            ->unique()
+            ->values();
+
+        if ($memberIds->isEmpty()) {
+            throw ValidationException::withMessages([
+                'members' => 'Choose at least one other person for the group.',
+            ]);
+        }
+
+        $group = ChatGroup::create([
+            'owner_id' => Auth::id(),
+            'name' => trim($data['name']),
+            'avatar' => 'default/avatar.png',
+        ]);
+
+        $attachPayload = $memberIds
+            ->prepend((int) Auth::id())
+            ->unique()
+            ->mapWithKeys(fn ($id) => [$id => [
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]])
+            ->all();
+
+        $group->members()->attach($attachPayload);
+
+        $contact = $this->buildGroupContact($group->fresh(['members:id,name,avatar,user_name']), (int) Auth::id());
+
+        return response()->json([
+            'group' => [
+                'id' => (int) $group->id,
+                'name' => $group->name,
+                'conversation_key' => $group->conversationKey(),
+            ],
+            'contact_item' => $this->getContactItem($contact),
+        ], 201);
+    }
+
+    public function typing(Request $request)
+    {
+        $request->validate([
+            'conversation_key' => ['required', 'string'],
+            'typing' => ['nullable', 'boolean'],
+        ]);
+
+        $conversation = $this->resolveConversationFromRequest($request);
+        $typing = $request->boolean('typing', true);
+        $authId = (int) Auth::id();
+
+        $recipientIds = $conversation['type'] === 'group'
+            ? $conversation['group']->members()->pluck('users.id')->map(fn ($id) => (int) $id)->reject(fn ($id) => $id === $authId)->values()->all()
+            : collect([(int) $conversation['user']->id])->reject(fn ($id) => $id === $authId)->values()->all();
+
+        if (! empty($recipientIds)) {
+            $this->dispatchBroadcastSafely(static fn () => TypingIndicatorUpdated::dispatch(
+                $recipientIds,
+                $conversation['conversation_key'],
+                $authId,
+                Auth::user()->name,
+                $typing
+            ));
+        }
+
+        return response()->json([
+            'ok' => true,
         ]);
     }
 
@@ -487,7 +532,7 @@ class MessengerController extends Controller
         return $this->buildAttachmentPayload($file, $storedPath, 'audio');
     }
 
-    protected function resolveReplyTarget(Request $request): ?Message
+    protected function resolveReplyTarget(Request $request, array $conversation): ?Message
     {
         $replyToId = (int) $request->integer('reply_to_id', 0);
 
@@ -495,20 +540,8 @@ class MessengerController extends Controller
             return null;
         }
 
-        $otherParticipantId = (int) $request->integer('id');
-        $authId = (int) Auth::id();
-
-        $replyMessage = Message::with('fromUser:id,name')
+        $replyMessage = $this->conversationMessagesQuery($conversation)
             ->whereKey($replyToId)
-            ->where(function ($query) use ($authId, $otherParticipantId) {
-                $query->where(function ($directQuery) use ($authId, $otherParticipantId) {
-                    $directQuery->where('from_id', $authId)
-                        ->where('to_id', $otherParticipantId);
-                })->orWhere(function ($directQuery) use ($authId, $otherParticipantId) {
-                    $directQuery->where('from_id', $otherParticipantId)
-                        ->where('to_id', $authId);
-                });
-            })
             ->first();
 
         if (! $replyMessage) {
@@ -526,6 +559,192 @@ class MessengerController extends Controller
         return $replyMessage;
     }
 
+    protected function resolveConversationFromRequest(Request $request): array
+    {
+        $conversationKey = trim((string) $request->input('conversation_key', ''));
+
+        if ($conversationKey === '') {
+            $fallbackId = (int) $request->integer('id', $request->integer('user_id', 0));
+            if ($fallbackId > 0) {
+                $conversationKey = 'user:' . $fallbackId;
+            }
+        }
+
+        if ($conversationKey === '') {
+            throw ValidationException::withMessages([
+                'conversation_key' => 'Select a conversation first.',
+            ]);
+        }
+
+        if (str_starts_with($conversationKey, 'group:')) {
+            $groupId = (int) substr($conversationKey, strlen('group:'));
+            $group = ChatGroup::query()
+                ->whereKey($groupId)
+                ->whereHas('members', fn ($query) => $query->where('users.id', Auth::id()))
+                ->firstOrFail();
+
+            return [
+                'type' => 'group',
+                'conversation_key' => $conversationKey,
+                'group' => $group,
+            ];
+        }
+
+        $userId = str_starts_with($conversationKey, 'user:')
+            ? (int) substr($conversationKey, strlen('user:'))
+            : (int) $conversationKey;
+
+        $user = User::query()->findOrFail($userId);
+
+        return [
+            'type' => 'user',
+            'conversation_key' => 'user:' . $user->id,
+            'user' => $user,
+        ];
+    }
+
+    protected function conversationMessagesQuery(array $conversation)
+    {
+        $query = Message::query()->with(['fromUser:id,name,avatar,user_name', 'replyTo.fromUser', 'group.members:id,name']);
+
+        if ($conversation['type'] === 'group') {
+            return $query->where('group_id', $conversation['group']->id);
+        }
+
+        return $query->whereNull('group_id')
+            ->where(function ($builder) use ($conversation) {
+                $builder->where(function ($nested) use ($conversation) {
+                    $nested->where('from_id', Auth::id())
+                        ->where('to_id', $conversation['user']->id);
+                })->orWhere(function ($nested) use ($conversation) {
+                    $nested->where('from_id', $conversation['user']->id)
+                        ->where('to_id', Auth::id());
+                });
+            });
+    }
+
+    protected function buildDirectContacts(int $authId): Collection
+    {
+        $userIds = Message::query()
+            ->whereNull('group_id')
+            ->where(function ($query) use ($authId) {
+                $query->where('from_id', $authId)
+                    ->orWhere('to_id', $authId);
+            })
+            ->get(['from_id', 'to_id'])
+            ->flatMap(fn (Message $message) => [(int) $message->from_id, (int) $message->to_id])
+            ->reject(fn ($id) => $id === $authId)
+            ->unique()
+            ->values();
+
+        if ($userIds->isEmpty()) {
+            return collect();
+        }
+
+        $users = User::query()
+            ->whereIn('id', $userIds)
+            ->get(['id', 'name', 'avatar', 'user_name']);
+
+        return $users
+            ->map(fn (User $user) => $this->buildDirectContact($user, $authId))
+            ->values();
+    }
+
+    protected function buildGroupContacts(int $authId): Collection
+    {
+        return ChatGroup::query()
+            ->with(['members:id,name,avatar,user_name'])
+            ->whereHas('members', fn ($query) => $query->where('users.id', $authId))
+            ->get()
+            ->map(fn (ChatGroup $group) => $this->buildGroupContact($group, $authId))
+            ->values();
+    }
+
+    protected function buildDirectContact(User $user, int $authId): array
+    {
+        $lastMessage = Message::query()
+            ->with('fromUser:id,name')
+            ->whereNull('group_id')
+            ->where(function ($query) use ($user, $authId) {
+                $query->where(function ($nested) use ($user, $authId) {
+                    $nested->where('from_id', $authId)
+                        ->where('to_id', $user->id);
+                })->orWhere(function ($nested) use ($user, $authId) {
+                    $nested->where('from_id', $user->id)
+                        ->where('to_id', $authId);
+                });
+            })
+            ->latest()
+            ->first();
+
+        $unseenCounter = Message::query()
+            ->whereNull('group_id')
+            ->where('from_id', $user->id)
+            ->where('to_id', $authId)
+            ->where('seen', 0)
+            ->count();
+
+        return [
+            'conversation_key' => 'user:' . $user->id,
+            'conversation_type' => 'user',
+            'user_id' => (int) $user->id,
+            'group_id' => null,
+            'avatar' => $user->avatar,
+            'name' => $user->name,
+            'secondary' => $user->user_name,
+            'preview' => $lastMessage ? $lastMessage->previewText($authId) : 'Say hi and start the conversation.',
+            'unseen_count' => $unseenCounter,
+            'last_message_at' => $lastMessage?->created_at,
+        ];
+    }
+
+    protected function buildGroupContact(ChatGroup $group, int $authId): array
+    {
+        $lastMessage = Message::query()
+            ->with('fromUser:id,name')
+            ->where('group_id', $group->id)
+            ->latest()
+            ->first();
+
+        $membership = ChatGroupMember::query()
+            ->where('chat_group_id', $group->id)
+            ->where('user_id', $authId)
+            ->first();
+
+        $lastReadId = (int) ($membership?->last_read_message_id ?? 0);
+        $unseenCounter = Message::query()
+            ->where('group_id', $group->id)
+            ->where('from_id', '!=', $authId)
+            ->when($lastReadId > 0, fn ($query) => $query->where('id', '>', $lastReadId))
+            ->count();
+
+        return [
+            'conversation_key' => $group->conversationKey(),
+            'conversation_type' => 'group',
+            'user_id' => null,
+            'group_id' => (int) $group->id,
+            'avatar' => $group->avatarPath(),
+            'name' => $group->name,
+            'secondary' => $group->members->count() . ' members',
+            'preview' => $lastMessage ? $lastMessage->previewText($authId) : 'Create the first message for this group.',
+            'unseen_count' => $unseenCounter,
+            'last_message_at' => $lastMessage?->created_at,
+        ];
+    }
+
+    protected function markGroupConversationRead(int $groupId, int $userId, int $messageId): void
+    {
+        ChatGroupMember::query()->updateOrCreate(
+            [
+                'chat_group_id' => $groupId,
+                'user_id' => $userId,
+            ],
+            [
+                'last_read_message_id' => $messageId,
+            ]
+        );
+    }
+
     protected function dispatchBroadcastSafely(callable $dispatcher): void
     {
         try {
@@ -534,5 +753,4 @@ class MessengerController extends Controller
             report($throwable);
         }
     }
-    
 }

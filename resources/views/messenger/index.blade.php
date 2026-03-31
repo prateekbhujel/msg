@@ -18,7 +18,10 @@
                         <i class="fas fa-arrow-left"></i>
                     </span>
                     <img src="" alt="User-Image" class="img-fluid">
-                    <h4></h4>
+                    <div class="messenger-header-copy">
+                        <h4></h4>
+                        <span class="messenger-typing-indicator d-none"></span>
+                    </div>
                 </div>
                 <div class="header_right">
                     <a href="javascript:void(0)" class="favourite"><i class="fas fa-star"></i></a>
@@ -56,7 +59,13 @@
                                 <i class="far fa-times"></i>
                             </button>
                         </div>
-                        <span class="voice-record-status d-none"></span>
+                        <div class="composer-recording-row d-none">
+                            <span class="voice-record-status d-none"></span>
+                            <button type="button" class="voice-record-cancel" aria-label="Discard voice note">
+                                <i class="far fa-trash-alt"></i>
+                                <span>Discard</span>
+                            </button>
+                        </div>
                     </div>
                     <form class="message-form" enctype="multipart/form-data">
                         <div class="composer-actions">
@@ -69,6 +78,9 @@
                                     <i class="fas fa-microphone"></i>
                                 </button>
                             </div>
+                            <button type="button" class="composer-emoji-trigger" title="Emoji" aria-label="Open emoji picker">
+                                <i class="far fa-smile"></i>
+                            </button>
                         </div>
                         <textarea class="message-input" id="example1" rows="1" placeholder="Type a message.." name="message"></textarea>
                         <button type="submit" class="message-send-button" aria-label="Send message"><i class="fas fa-paper-plane"></i></button>

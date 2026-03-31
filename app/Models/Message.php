@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Str;
 
@@ -16,6 +17,7 @@ class Message extends Model
     protected $fillable = [
         'from_id',
         'to_id',
+        'group_id',
         'body',
         'attachment',
         'message_type',
@@ -38,6 +40,11 @@ class Message extends Model
     public function toUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'to_id');
+    }
+
+    public function group(): BelongsTo
+    {
+        return $this->belongsTo(ChatGroup::class, 'group_id');
     }
 
     public function replyTo(): BelongsTo
@@ -112,8 +119,40 @@ class Message extends Model
         return ($this->message_type ?? 'text') === 'call';
     }
 
+    public function isGroupMessage(): bool
+    {
+        return (int) ($this->group_id ?? 0) > 0;
+    }
+
+    public function conversationKey(): string
+    {
+        return $this->isGroupMessage()
+            ? 'group:' . (int) $this->group_id
+            : 'user:' . (int) $this->conversationPartnerId();
+    }
+
+    public function conversationPartnerId(): int
+    {
+        return (int) ($this->to_id ?: $this->from_id);
+    }
+
     public function isParticipant(int $userId): bool
     {
+        if ($this->isGroupMessage()) {
+            if ($this->relationLoaded('group') && $this->group) {
+                if ($this->group->relationLoaded('members')) {
+                    return $this->group->members->contains('id', $userId);
+                }
+
+                return $this->group->members()->where('users.id', $userId)->exists();
+            }
+
+            return ChatGroupMember::query()
+                ->where('chat_group_id', (int) $this->group_id)
+                ->where('user_id', $userId)
+                ->exists();
+        }
+
         return (int) $this->from_id === $userId || (int) $this->to_id === $userId;
     }
 
@@ -134,6 +173,35 @@ class Message extends Model
     public function supportsInteractions(): bool
     {
         return ! $this->isCallMessage();
+    }
+
+    public function broadcastRecipientIds(): array
+    {
+        if ($this->isGroupMessage()) {
+            $members = $this->relationLoaded('group') && $this->group
+                ? ($this->group->relationLoaded('members')
+                    ? $this->group->members
+                    : $this->group->members()->get(['users.id']))
+                : User::query()
+                    ->select('users.id')
+                    ->join('chat_group_members', 'chat_group_members.user_id', '=', 'users.id')
+                    ->where('chat_group_members.chat_group_id', (int) $this->group_id)
+                    ->get();
+
+            return collect($members)
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->filter(fn ($id) => $id > 0)
+                ->unique()
+                ->values()
+                ->all();
+        }
+
+        return collect([(int) $this->from_id, (int) $this->to_id])
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
     }
 
     public function callStatus(): string
@@ -331,12 +399,16 @@ class Message extends Model
 
     public function previewText(int $viewerId): string
     {
+        $senderPrefix = $this->isGroupMessage()
+            ? (($this->from_id === $viewerId ? 'You' : ($this->fromUser?->name ?: 'Someone')) . ': ')
+            : '';
+
         if ($this->isCallMessage()) {
             $prefix = $this->from_id === $viewerId ? 'You ' : '';
             $callType = ucfirst((string) data_get($this->meta, 'call_type', 'video'));
             $status = $this->callStatus();
 
-            return match ($status) {
+            return $senderPrefix . match ($status) {
                 'ringing' => $prefix . 'started a ' . strtolower($callType) . ' call',
                 'active' => $prefix . 'is on a ' . strtolower($callType) . ' call',
                 'declined' => $prefix . 'declined a ' . strtolower($callType) . ' call',
@@ -347,20 +419,20 @@ class Message extends Model
         if ($this->isVoiceMessage()) {
             $durationLabel = $this->voiceNoteDurationLabel();
 
-            return $this->from_id === $viewerId
+            return $senderPrefix . ($this->from_id === $viewerId
                 ? 'You sent a voice note' . ($durationLabel ? ' · ' . $durationLabel : '') . '.'
-                : 'Sent a voice note' . ($durationLabel ? ' · ' . $durationLabel : '') . '.';
+                : 'Sent a voice note' . ($durationLabel ? ' · ' . $durationLabel : '') . '.');
         }
 
         if ($this->hasAttachments()) {
             $summary = $this->attachmentSummary();
 
-            return $this->from_id === $viewerId
+            return $senderPrefix . ($this->from_id === $viewerId
                 ? 'You sent ' . strtolower($summary) . '.'
-                : 'Sent ' . strtolower($summary) . '.';
+                : 'Sent ' . strtolower($summary) . '.');
         }
 
-        return $this->body ?: 'Message';
+        return $senderPrefix . ($this->body ?: 'Message');
     }
 
     protected function normalizeAttachment(mixed $attachment): ?array

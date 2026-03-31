@@ -153,13 +153,19 @@ function formatCallStatusLabel(status)
 
 function getSelectedConversationId()
 {
+    const conversationKey = $('meta[name=conversation-key]').attr('content') || '';
+
+    if (conversationKey.startsWith('group:')) {
+        return 0;
+    }
+
     const metaId = Number($('meta[name=id]').attr('content') || 0);
 
     if (metaId > 0) {
         return metaId;
     }
 
-    return Number($('.messenger-list-item.active').first().data('id') || 0);
+    return Number($('.messenger-list-item.active').first().data('userId') || $('.messenger-list-item.active').first().data('id') || 0);
 }
 
 class MessengerCallManager

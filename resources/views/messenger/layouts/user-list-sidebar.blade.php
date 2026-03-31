@@ -5,6 +5,9 @@
             {{ config('app.name') }}
         </h3>
         <div class="d-flex">
+            <span class="setting me-2" data-bs-toggle="modal" data-bs-target="#createGroupModal" title="Create group">
+                <i class="fas fa-user-friends"></i>
+            </span>
             <form method="POST" action="{{ route('logout') }}">
                 @csrf
 
@@ -23,6 +26,7 @@
         </div>
 
         @include('messenger.layouts.profile-modal')
+        @include('messenger.layouts.create-group-modal')
 
     </div>
     
@@ -35,7 +39,14 @@
         <div class="row favourite_user_slider">
 
             @foreach ($favoriteList as $item)
-                <div class="col-xl-3 messenger-list-item" role="button" data-id="{{ $item->user?->id }}">
+                <div
+                    class="col-xl-3 messenger-list-item"
+                    role="button"
+                    data-id="{{ $item->user?->id }}"
+                    data-user-id="{{ $item->user?->id }}"
+                    data-conversation-key="user:{{ $item->user?->id }}"
+                    data-conversation-type="user"
+                >
                     <a href="#" class="wsus__favourite_item">
                         <div class="img">
                             <img src="{{ asset($item->user?->avatar) }}" alt="User" class="img-fluid">
@@ -51,7 +62,13 @@
 
     <div class="wsus__save_message">
         <div class="top">your space</div>
-        <div class="wsus__save_message_center messenger-list-item" data-id = "{{ auth()->user()->id }}">
+        <div
+            class="wsus__save_message_center messenger-list-item"
+            data-id="{{ auth()->user()->id }}"
+            data-user-id="{{ auth()->user()->id }}"
+            data-conversation-key="user:{{ auth()->user()->id }}"
+            data-conversation-type="user"
+        >
             <div class="icon">
                 <i class="far fa-bookmark"></i>
             </div>

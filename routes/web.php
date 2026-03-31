@@ -38,6 +38,7 @@ Route::group(['middleware' => 'auth'], function() {
     Route::get('messenger', [MessengerController::class, 'index'])->name('home');
 
     Route::post('messenger/profile', [UserProfileController::class, 'update'])->name('messenger.profile.update');
+    Route::post('messenger/groups', [MessengerController::class, 'createGroup'])->name('messenger.groups.store');
     
     //Call routes
     Route::post('messenger/calls', [CallController::class, 'store'])->name('messenger.calls.store');
@@ -63,6 +64,7 @@ Route::group(['middleware' => 'auth'], function() {
     
     //Updates the contacts realtime on sending the message
     Route::get('messenger/update-contact-item',  [MessengerController::class, 'updateContactItem'])->name('messenger.update-contact-item');
+    Route::post('messenger/typing', [MessengerController::class, 'typing'])->name('messenger.typing');
 
     //Sets the Seen value to '0' when user clicks on the user conversation.
     Route::post('messenger/make-seen', [MessengerController::class, 'makeSeen'])->name('messenger.make-seen');

@@ -18,9 +18,14 @@ var voiceRecordingTimer = null;
 var voiceRecordingStartedAt = null;
 var voiceRecordingLimitReached = false;
 var voiceRecordingDurationSeconds = 0;
+var voiceRecordingDiscardRequested = false;
 var messageSending = false;
 var attachmentPreviewUrls = [];
 var composerReplyTarget = null;
+var typingIndicatorTimer = null;
+var typingPingTimer = null;
+var typingIndicatorHideTimer = null;
+var knownGroupConversationKeys = new Set();
 
 const VOICE_RECORDING_MAX_SECONDS = 120;
 const REACTION_OPTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
@@ -40,12 +45,53 @@ const messageForm             = $(".message-form"),
       composerReplyPreview    = $(".composer-reply-preview"),
       composerReplyLabel      = $(".composer-reply-preview__label"),
       composerReplyText       = $(".composer-reply-preview__text"),
+      composerRecordingRow    = $(".composer-recording-row"),
+      voiceRecordCancel       = $(".voice-record-cancel"),
       voiceRecordToggle       = $(".voice-record-toggle"),
       voiceRecordStatus       = $(".voice-record-status"),
-      voiceRecordToggleIcon   = $(".voice-record-toggle i");
+      voiceRecordToggleIcon   = $(".voice-record-toggle i"),
+      emojiTriggerButton      = $(".composer-emoji-trigger"),
+      typingIndicatorLabel    = $(".messenger-typing-indicator"),
+      createGroupForm         = $(".create-group-form");
 
-const getMessengerId          = () => $("meta[name=id]").attr("content");
-const setMessengerId          = (id) => $("meta[name=id]").attr("content", id);
+const getMessengerId          = () => {
+    const conversationKey = getConversationKey();
+
+    if (conversationKey.startsWith('user:')) {
+        return Number(conversationKey.split(':')[1] || 0);
+    }
+
+    return Number($("meta[name=id]").attr("content") || 0);
+};
+const setMessengerId          = (id) => $("meta[name=id]").attr("content", id ? String(id) : '');
+const getConversationKey      = () => $("meta[name=conversation-key]").attr("content") || '';
+const setConversationKey      = (key) => $("meta[name=conversation-key]").attr("content", key || '');
+const getConversationType     = () => getConversationKey().startsWith('group:') ? 'group' : 'user';
+const getActiveGroupId        = () => {
+    const conversationKey = getConversationKey();
+
+    return conversationKey.startsWith('group:') ? Number(conversationKey.split(':')[1] || 0) : 0;
+};
+
+function buildConversationPayload(conversationKey = getConversationKey())
+{
+    if (!conversationKey) {
+        return {
+            id: getMessengerId(),
+        };
+    }
+
+    if (/^user:\d+$/.test(conversationKey)) {
+        return {
+            conversation_key: conversationKey,
+            id: Number(conversationKey.split(':')[1] || 0),
+        };
+    }
+
+    return {
+        conversation_key: conversationKey,
+    };
+}
 
 function resolveAssetUrl(path)
 {
@@ -208,6 +254,77 @@ function focusComposer()
     }
 
     messageInput.trigger('focus');
+}
+
+function showTypingIndicator(name = 'Someone')
+{
+    if (!typingIndicatorLabel.length) {
+        return;
+    }
+
+    window.clearTimeout(typingIndicatorHideTimer);
+    typingIndicatorLabel.text(`${name} is typing...`).removeClass('d-none');
+    typingIndicatorHideTimer = window.setTimeout(() => {
+        hideTypingIndicator();
+    }, 2600);
+}
+
+function hideTypingIndicator()
+{
+    if (!typingIndicatorLabel.length) {
+        return;
+    }
+
+    typingIndicatorLabel.addClass('d-none').text('');
+}
+
+function sendTypingState(active = true)
+{
+    const conversationKey = getConversationKey();
+
+    if (!conversationKey) {
+        return;
+    }
+
+    $.ajax({
+        method: 'POST',
+        url: route('messenger.typing'),
+        data: {
+            _token: csrf_token,
+            conversation_key: conversationKey,
+            typing: active ? 1 : 0,
+        },
+    });
+}
+
+function queueTypingIndicator()
+{
+    if (!getConversationKey()) {
+        return;
+    }
+
+    const composerValue = getComposerText().trim();
+
+    if (!composerValue.length) {
+        window.clearTimeout(typingIndicatorTimer);
+        window.clearTimeout(typingPingTimer);
+        sendTypingState(false);
+        return;
+    }
+
+    if (!typingPingTimer) {
+        sendTypingState(true);
+    }
+
+    window.clearTimeout(typingPingTimer);
+    typingPingTimer = window.setTimeout(() => {
+        typingPingTimer = null;
+    }, 1200);
+
+    window.clearTimeout(typingIndicatorTimer);
+    typingIndicatorTimer = window.setTimeout(() => {
+        sendTypingState(false);
+    }, 1600);
 }
 
 function getConversationPartnerLabel()
@@ -650,6 +767,15 @@ function updateComposerVoiceStatus(content = '', active = false, warning = false
         return;
     }
 
+    if (composerRecordingRow.length) {
+        const shouldShowRow = !!content || voiceRecordingActive || !!voiceRecordingBlob;
+        composerRecordingRow.toggleClass('d-none', !shouldShowRow);
+    }
+
+    if (voiceRecordCancel.length) {
+        voiceRecordCancel.toggleClass('d-none', !voiceRecordingActive && !voiceRecordingBlob);
+    }
+
     voiceRecordStatus.html(content).toggleClass('d-none', !content);
     voiceRecordStatus.toggleClass('is-active', active);
     voiceRecordStatus.toggleClass('is-warning', warning);
@@ -779,6 +905,7 @@ function clearVoiceRecordingPreview()
     voiceRecordingDurationSeconds = 0;
     voicePreview.addClass('d-none').empty();
     updateComposerVoiceStatus('', false);
+    voiceRecordingDiscardRequested = false;
     toggleComposerState('has-voice-preview', false);
 }
 
@@ -833,13 +960,28 @@ function resetVoiceRecordingState()
     voiceRecordingActive = false;
     voiceRecordingLimitReached = false;
     voiceRecordingDurationSeconds = 0;
+    voiceRecordingDiscardRequested = false;
     toggleComposerState('is-recording', false);
     setVoiceRecordButtonState(false);
+    updateComposerVoiceStatus('', false);
 
     if (voiceRecordingStopResolver) {
         voiceRecordingStopResolver();
         voiceRecordingStopResolver = null;
     }
+}
+
+async function cancelVoiceRecording()
+{
+    if (voiceRecordingActive) {
+        voiceRecordingDiscardRequested = true;
+        await stopVoiceRecording();
+    }
+
+    clearVoiceRecordingPreview();
+    resetVoiceRecordingState();
+    updateComposerVoiceStatus('', false);
+    focusComposer();
 }
 
 function finishComposerSend({ clearText = true } = {})
@@ -860,6 +1002,9 @@ function finishComposerSend({ clearText = true } = {})
     toggleComposerState('is-recording', false);
     setVoiceRecordButtonState(false);
     updateComposerVoiceStatus('', false);
+    window.clearTimeout(typingIndicatorTimer);
+    window.clearTimeout(typingPingTimer);
+    sendTypingState(false);
     scrolllToBottom(messageBoxContainer);
     focusComposer();
 }
@@ -897,7 +1042,8 @@ async function startVoiceRecording()
         clearVoiceRecordingPreview();
         clearVoiceRecordingTimer();
         voiceRecordingLimitReached = false;
-        updateComposerVoiceStatus(formatVoiceRecordingLabel(0), true);
+        voiceRecordingDiscardRequested = false;
+        setComposerVoiceRecordingStatus(0);
         voiceRecordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         voiceRecordingChunks = [];
         voiceRecorder = new MediaRecorder(voiceRecordingStream);
@@ -924,7 +1070,7 @@ async function startVoiceRecording()
 
             clearVoiceRecordingTimer();
             voiceRecordingDurationSeconds = recordedSeconds;
-            voiceRecordingBlob = blob.size > 0 ? blob : null;
+            voiceRecordingBlob = voiceRecordingDiscardRequested || blob.size <= 0 ? null : blob;
             toggleComposerState('is-recording', false);
 
             if (voiceRecordingBlob) {
@@ -953,6 +1099,7 @@ async function startVoiceRecording()
             voiceRecordingActive = false;
             setVoiceRecordButtonState(false);
             updateComposerVoiceStatus('', false);
+            voiceRecordingDiscardRequested = false;
 
             if (voiceRecordingLimitReached) {
                 notyf.info('Voice note reached the 2 minute limit and stopped automatically.');
@@ -1042,6 +1189,7 @@ function renderReceivedMessageCard(e)
     const messageType = e.message_type || 'text';
     const attachments = normalizeAttachments(e.attachments || e.attachment, messageType);
     const isMine = Number(e.from_id) === Number(auth_id);
+    const isGroupMessage = Number(e.group_id || 0) > 0;
     const canDelete = isMine && messageType !== 'call';
     const canInteract = messageType !== 'call';
     const bodyText = typeof e.body === 'string' ? e.body.trim() : (e.body || '');
@@ -1049,11 +1197,15 @@ function renderReceivedMessageCard(e)
     const messageTime = formatTimestampLabel(e.created_at);
     const replyPreview = e.reply_preview || null;
     const reactions = normalizeReactionSummary(e.reactions, e.reaction_map);
+    const senderName = escapeHtml(e.from_name || 'Group member');
     const replySnippetText = String(
         replyPreview?.snippet || bodyText || (messageType === 'voice' ? 'Voice note' : attachments.length ? 'Attachment' : 'Message')
     ).replace(/\s+/g, ' ').trim();
     const replyAttributes = canInteract
-        ? `data-reply-id="${e.id}" data-reply-author="${escapeHtml(isMine ? 'You' : getConversationPartnerLabel())}" data-reply-snippet="${escapeHtml(replySnippetText)}"`
+        ? `data-reply-id="${e.id}" data-reply-author="${escapeHtml(isMine ? 'You' : (isGroupMessage ? (e.from_name || 'Group member') : getConversationPartnerLabel()))}" data-reply-snippet="${escapeHtml(replySnippetText)}"`
+        : '';
+    const senderMarkup = isGroupMessage && !isMine && messageType !== 'call'
+        ? `<span class="message-sender-label">${senderName}</span>`
         : '';
 
     if (messageType === 'call') {
@@ -1089,6 +1241,7 @@ function renderReceivedMessageCard(e)
         return `
             <div class="wsus__single_chat_area message-card" data-id="${e.id}" data-message-type="voice" ${replyAttributes}>
                 <div class="wsus__single_chat ${isMine ? 'chat_right' : ''}">
+                    ${senderMarkup}
                     ${renderReplyPreviewMarkup(replyPreview)}
                     ${renderVoicePlayerMarkup({
                         source: voiceUrl,
@@ -1112,6 +1265,7 @@ function renderReceivedMessageCard(e)
         return `
             <div class="wsus__single_chat_area message-card" data-id="${e.id}" data-message-type="${messageType}" ${replyAttributes}>
                 <div class="wsus__single_chat ${isMine ? 'chat_right' : ''}">
+                    ${senderMarkup}
                     ${renderReplyPreviewMarkup(replyPreview)}
                     ${body ? `<p class="messages">${body}</p>` : ''}
                     ${mediaMarkup}
@@ -1126,6 +1280,7 @@ function renderReceivedMessageCard(e)
     return `
         <div class="wsus__single_chat_area message-card" data-id="${e.id}" data-message-type="${messageType}" ${replyAttributes}>
             <div class="wsus__single_chat ${isMine ? 'chat_right' : ''}">
+                ${senderMarkup}
                 ${renderReplyPreviewMarkup(replyPreview)}
                 ${body ? `<p class="messages">${body}</p>` : ''}
                 ${renderReactionSummaryMarkup(e.id, reactions)}
@@ -1194,7 +1349,17 @@ async function sendMessage()
         temporaryMsgId += 1;
         let tempID = `temp_${temporaryMsgId}`; //temp_1, temp_2 ....
         const formData = new FormData(messageForm[0]);
-        formData.append("id", getMessengerId());
+        const conversationKey = getConversationKey();
+        const directUserId = getMessengerId();
+
+        if (conversationKey) {
+            formData.append('conversation_key', conversationKey);
+        }
+
+        if (directUserId) {
+            formData.append("id", directUserId);
+        }
+
         formData.append("temporaryMsgId", tempID);
         formData.append("_token", csrf_token);
         if (composerReplyTarget?.id) {
@@ -1241,7 +1406,7 @@ async function sendMessage()
             success: function (data) {
                 makeSeen(true);
                 //Update conatcts lists...
-                updateContactItem(getMessengerId());
+                updateContactItem(getConversationKey());
                 const tempMsgCardElement = messageBoxContainer.find(`.message-card[data-id="${data.tempID}"]`);
 
                 if (tempMsgCardElement.length) {
@@ -1255,7 +1420,7 @@ async function sendMessage()
                 const shouldClearText = getComposerText() === composerSnapshot.text;
 
                 finishComposerSend({ clearText: shouldClearText });
-                updateSelectedContent(getMessengerId());
+                updateSelectedContent(getConversationKey());
                 messageSending = false;
             },
             error: function (xhr, status, error) {
@@ -1388,7 +1553,7 @@ function deleteMessage(message_id)
 
                     notyf.success(data.message);
                     //Update conatcts lists...
-                    updateContactItem(getMessengerId());
+                    updateContactItem(getConversationKey());
                 },
                 error: function(xhr, status, error){
                     notyf.error(xhr?.responseJSON?.message || 'Unable to delete this message.');
@@ -1468,10 +1633,66 @@ function messageFormReset()
     toggleComposerState('is-recording', false);
     setVoiceRecordButtonState(false);
     updateComposerVoiceStatus('', false);
+    window.clearTimeout(typingIndicatorTimer);
+    window.clearTimeout(typingPingTimer);
+    sendTypingState(false);
     messageForm.trigger("reset");
     setComposerText('');
 
 }//End Method
+
+function setHeaderConversationActions(type = 'user')
+{
+    const isDirect = type === 'user';
+
+    $('.favourite').toggleClass('d-none', !isDirect);
+    $('.start-call').toggleClass('d-none', !isDirect);
+}
+
+function renderConversationMembers(members = [])
+{
+    const memberList = $('.conversation-member-list');
+    const memberPanel = $('.conversation-member-panel');
+
+    if (!memberList.length || !memberPanel.length) {
+        return;
+    }
+
+    if (!Array.isArray(members) || members.length === 0) {
+        memberList.empty();
+        memberPanel.addClass('d-none');
+        return;
+    }
+
+    memberList.html(
+        members.map((member) => `
+            <li class="conversation-member-list__item">
+                <span class="conversation-member-list__avatar">
+                    <img src="${resolveAssetUrl(member.avatar || 'default/avatar.png')}" alt="${escapeHtml(member.name)}">
+                </span>
+                <span class="conversation-member-list__copy">
+                    <strong>${escapeHtml(member.name)}</strong>
+                    <span>${escapeHtml(member.user_name || '')}</span>
+                </span>
+            </li>
+        `).join('')
+    );
+
+    memberPanel.removeClass('d-none');
+}
+
+function setActiveConversation(conversationKey, options = {})
+{
+    const type = options.type || (conversationKey.startsWith('group:') ? 'group' : 'user');
+    const userId = type === 'user'
+        ? Number(options.userId || conversationKey.split(':')[1] || 0)
+        : 0;
+
+    setConversationKey(conversationKey);
+    setMessengerId(userId || '');
+    updateSelectedContent(conversationKey);
+    setHeaderConversationActions(type);
+}
 
 /** 
  *  ------------------------------
@@ -1483,6 +1704,10 @@ let noMoreMessages = false;
 let messagesLoading = false;
 function fetchMessages(id, newFetch = false) 
 {
+    const requestData = typeof id === 'string'
+        ? buildConversationPayload(id)
+        : buildConversationPayload();
+
     if (newFetch) {
         messagesPage = 1;
         noMoreMessages = false;
@@ -1493,7 +1718,7 @@ function fetchMessages(id, newFetch = false)
             url: route('messenger.fetch-messages'),
             data: {
                 _token: csrf_token,
-                id: id,
+                ...requestData,
                 page: messagesPage
             },
             beforeSend: function () {
@@ -1727,17 +1952,21 @@ function debounce(callback, delay)
 */
 function Idinfo(id)
 {
+    const requestData = typeof id === 'string'
+        ? buildConversationPayload(id)
+        : buildConversationPayload();
+
     $.ajax({
         method: 'GET',
         url: route('messenger.id-info'),
-        data: { id: id },
+        data: requestData,
         beforeSend: function () {
             NProgress.start();
             enableChatBoxLoader();
         },
         success: function (data) {
             //Fetch Messages
-            fetchMessages(data.fetch.id, true);
+            fetchMessages(data.conversation_key || id, true);
 
             //Load gallery:
             $(".wsus__chat_info_gallery").html("");
@@ -1755,13 +1984,29 @@ function Idinfo(id)
 
             //Fetch Favourites and handles the favorite button
             data.favorite > 0 ? $(".favourite").addClass("active") : $(".favourite").removeClass("active");
+            setHeaderConversationActions(data.type || 'user');
 
-            $(".messenger-header").find("img").attr("src", resolveAssetUrl(data.fetch.avatar));
-            $(".messenger-header").find("h4").text(data.fetch.name);
+            if (data.type === 'group') {
+                const group = data.group || {};
 
-            $(".messenger-info-view .user_photo").find("img").attr("src", resolveAssetUrl(data.fetch.avatar));
-            $(".messenger-info-view").find(".user_name").text(data.fetch.name);
-            $(".messenger-info-view").find(".user_unique_name").text(data.fetch.user_name);
+                $(".messenger-header").find("img").attr("src", resolveAssetUrl(group.avatar));
+                $(".messenger-header").find("h4").text(group.name || 'Group');
+
+                $(".messenger-info-title").text('Group Details');
+                $(".messenger-info-view .user_photo").find("img").attr("src", resolveAssetUrl(group.avatar));
+                $(".messenger-info-view").find(".user_name").text(group.name || 'Group');
+                $(".messenger-info-view").find(".user_unique_name").text(group.user_name || '');
+                renderConversationMembers(data.members || []);
+            } else {
+                $(".messenger-header").find("img").attr("src", resolveAssetUrl(data.fetch.avatar));
+                $(".messenger-header").find("h4").text(data.fetch.name);
+
+                $(".messenger-info-title").text('User Details');
+                $(".messenger-info-view .user_photo").find("img").attr("src", resolveAssetUrl(data.fetch.avatar));
+                $(".messenger-info-view").find(".user_name").text(data.fetch.name);
+                $(".messenger-info-view").find(".user_unique_name").text(data.fetch.user_name);
+                renderConversationMembers([]);
+            }
             NProgress.done();
         },
         error: function (xhr, status, error) {
@@ -1795,33 +2040,36 @@ function scrolllToBottom(container)
 */
 function updateContactItem(user_id)
 {
-    if(user_id != auth_id)
-    {
-        $.ajax({
-            method: 'GET',
-            url : route('messenger.update-contact-item'),
-            data: { user_id: user_id },
-            success: function(data){
-                if (messageBoxContainer.find('.no_contact').length) {
-                    messengerContactBox.find('.no_contact').remove();
-                }
-                messengerContactBox.find(`.messenger-list-item[data-id="${user_id}"]`).remove();
-                messengerContactBox.prepend(data.contact_item);
-                // Adding (+) -- Infornt of the vairable 
-                // sets or makes it integer
-                if(activeUsersIds.includes(+user_id)){
-                   userActive(user_id);
-                }else{
-                    userInactive(user_id);
-                }
+    const conversationPayload = typeof user_id === 'string'
+        ? buildConversationPayload(user_id)
+        : buildConversationPayload();
 
-                if(user_id == getMessengerId()) updateSelectedContent(user_id);
-    
-            },
-            error: function(xhr, status, error){}
-    
-        });
-    }
+    $.ajax({
+        method: 'GET',
+        url : route('messenger.update-contact-item'),
+        data: conversationPayload,
+        success: function(data){
+            if (messageBoxContainer.find('.no_contact').length) {
+                messengerContactBox.find('.no_contact').remove();
+            }
+            const conversationKey = data.conversation_key || conversationPayload.conversation_key || `user:${user_id}`;
+            messengerContactBox.find(`.messenger-list-item[data-conversation-key="${conversationKey}"]`).remove();
+            messengerContactBox.prepend(data.contact_item);
+            const activeUserId = Number(conversationPayload.id || 0);
+            if(activeUserId > 0) {
+                if(activeUsersIds.includes(activeUserId)){
+                   userActive(activeUserId);
+                }else{
+                    userInactive(activeUserId);
+                }
+            }
+
+            if(conversationKey == getConversationKey()) updateSelectedContent(conversationKey);
+
+        },
+        error: function(xhr, status, error){}
+
+    });
 
 }//End Method
 
@@ -1835,7 +2083,7 @@ function updateContactItem(user_id)
 function updateSelectedContent(user_id)
 {
     $(".messenger-list-item").removeClass('active');
-    $(`.messenger-list-item[data-id="${user_id}"]`).addClass('active');
+    $(`.messenger-list-item[data-conversation-key="${user_id}"]`).addClass('active');
 
 }//End Method
 
@@ -1846,6 +2094,10 @@ function updateSelectedContent(user_id)
 */
 function star(user_id)
 {
+    if (getConversationType() !== 'user') {
+        return;
+    }
+
     $(".favourite").toggleClass('active');
 
     $.ajax({
@@ -1853,6 +2105,7 @@ function star(user_id)
         url: route("messenger.favorite"),
         data: {  
             _token: csrf_token,
+            conversation_key: getConversationKey(),
             id: user_id,
         },
         success: function(data) {
@@ -1880,13 +2133,13 @@ function star(user_id)
 */
 function makeSeen(status)
 {
-    $(`.messenger-list-item[data-id="${getMessengerId()}"]`).find('.unseen_count').remove();
+    $(`.messenger-list-item[data-conversation-key="${getConversationKey()}"]`).find('.unseen_count').remove();
     $.ajax({
         method: 'POST',
         url: route('messenger.make-seen'),
         data: {  
             _token: csrf_token,
-            id: getMessengerId()
+            ...buildConversationPayload()
         },
         success: function(data){},
         error: function(xhr, status, error){}
@@ -1924,20 +2177,22 @@ function playNotficationSound()
 */
 window.Echo.private('message.' + auth_id)
     .listen("Message", (e) => {
-        // console.log(e);
+        const conversationKey = e.conversation_key || `user:${e.from_id}`;
 
-        if(getMessengerId() != e.from_id)
+        if(getConversationKey() != conversationKey)
         {
-            updateContactItem(e.from_id);
+            updateContactItem(conversationKey);
             playNotficationSound();
         }
     
         let message = receiveMessageCard(e);
-        if(getMessengerId() == e.from_id)
+        if(getConversationKey() == conversationKey)
         {
             messageBoxContainer.append(message);
             initializeVoicePlayers(messageBoxContainer[0]);
             scrolllToBottom(messageBoxContainer);
+            makeSeen(true);
+            hideTypingIndicator();
         }
 
 });//End Method
@@ -1947,6 +2202,17 @@ window.Echo.private('message.' + auth_id)
         const reactions = normalizeReactionSummary([], event.reaction_map || {});
 
         applyReactionState(event.message_id, reactions);
+    })
+    .listen("TypingIndicatorUpdated", (event) => {
+        if (event.conversation_key !== getConversationKey() || Number(event.from_id) === Number(auth_id)) {
+            return;
+        }
+
+        if (event.typing) {
+            showTypingIndicator(event.from_name || 'Someone');
+        } else {
+            hideTypingIndicator();
+        }
     });
 
 /** 
@@ -1960,7 +2226,7 @@ window.Echo.join('online')
         setActiveUsersIds(users);
         // console.log(activeUsersIds);
         $.each(users, function(index, user){
-            let contactItem = $(`.messenger-list-item[data-id="${user.id}"]`).find('.img').find('span');
+            let contactItem = $(`.messenger-list-item[data-user-id="${user.id}"]`).find('.img').find('span');
             contactItem.removeClass('inactive');
             contactItem.addClass('active');
 
@@ -1990,9 +2256,9 @@ window.Echo.join('online')
 function updateUserActiveList()
 {
     $('.messenger-list-item').each(function(index, value){
-        let id = $(this).data('id');
+        let id = $(this).data('userId');
 
-        if(activeUsersIds.includes(+id)) userActive(id);
+        if(id && activeUsersIds.includes(+id)) userActive(id);
 
     });
 
@@ -2006,7 +2272,7 @@ function updateUserActiveList()
 */
 function userActive(id)
 {
-    let contactItem = $(`.messenger-list-item[data-id="${id}"]`).find('.img').find('span');
+    let contactItem = $(`.messenger-list-item[data-user-id="${id}"]`).find('.img').find('span');
     contactItem.removeClass('inactive');
     contactItem.addClass('active');
 
@@ -2020,7 +2286,7 @@ function userActive(id)
 */
 function userInactive(id)
 {
-    let contactItem = $(`.messenger-list-item[data-id="${id}"]`).find('.img').find('span');
+    let contactItem = $(`.messenger-list-item[data-user-id="${id}"]`).find('.img').find('span');
     contactItem.removeClass('active');
     contactItem.addClass('inactive');
 
@@ -2077,6 +2343,8 @@ $(document).ready(function ()
 {   
     getContacts();;
     initializeCallManager();
+    setHeaderConversationActions('group');
+    hideTypingIndicator();
 
     /**
      *  -------------------------------------------
@@ -2149,12 +2417,16 @@ $(document).ready(function ()
      *  --------------------------------------
     */
     $("body").on('click', '.messenger-list-item', function () {
-        const dataId = $(this).attr('data-id');
-        
-        updateSelectedContent(dataId);
+        const conversationKey = String($(this).data('conversationKey') || '');
+        const conversationType = String($(this).data('conversationType') || 'user');
+        const userId = Number($(this).data('userId') || $(this).data('id') || 0);
 
-        setMessengerId(dataId);
-        Idinfo(dataId);
+        setActiveConversation(conversationKey, {
+            type: conversationType,
+            userId,
+        });
+        hideTypingIndicator();
+        Idinfo(conversationKey);
         messageFormReset();
     });
 
@@ -2180,6 +2452,8 @@ $(document).ready(function ()
 
     messageInput.on('keydown', composerEnterHandler);
     $('body').on('keydown', '.emojionearea-editor', composerEnterHandler);
+    messageInput.on('input', queueTypingIndicator);
+    $('body').on('input keyup', '.emojionearea-editor', queueTypingIndicator);
 
     /**
      *  -------------------------------
@@ -2194,6 +2468,31 @@ $(document).ready(function ()
     voiceRecordToggle.on('click', function (e) {
         e.preventDefault();
         startVoiceRecording();
+    });
+
+    voiceRecordCancel.on('click', async function (e) {
+        e.preventDefault();
+        await cancelVoiceRecording();
+    });
+
+    emojiTriggerButton.on('click', function (e) {
+        e.preventDefault();
+        const composer = getComposerEmojiArea();
+
+        if (!composer || typeof composer.showPicker !== 'function') {
+            focusComposer();
+            return;
+        }
+
+        const pickerIsOpen = $(composer.button).hasClass('active');
+
+        if (pickerIsOpen && typeof composer.hidePicker === 'function') {
+            composer.hidePicker();
+        } else {
+            composer.showPicker();
+        }
+
+        focusComposer();
     });
 
     $('body').on('click', '.composer-reply-clear', function (e) {
@@ -2254,6 +2553,37 @@ $(document).ready(function ()
 
     });
 
+    createGroupForm.on('submit', function (e) {
+        e.preventDefault();
+
+        $.ajax({
+            method: 'POST',
+            url: route('messenger.groups.store'),
+            data: `${$(this).serialize()}&_token=${encodeURIComponent(csrf_token)}`,
+            success: function (data) {
+                if (messengerContactBox.find('.no_contact').length) {
+                    messengerContactBox.find('.no_contact').remove();
+                }
+
+                messengerContactBox.prepend(data.contact_item);
+                createGroupForm[0].reset();
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('createGroupModal')).hide();
+
+                const conversationKey = data.group?.conversation_key || '';
+                if (conversationKey) {
+                    setActiveConversation(conversationKey, { type: 'group' });
+                    Idinfo(conversationKey);
+                    messageFormReset();
+                }
+
+                notyf.success('Group created successfully.');
+            },
+            error: function (xhr) {
+                notyf.error(xhr?.responseJSON?.message || 'Unable to create the group right now.');
+            }
+        });
+    });
+
     /** 
      *   ----------------------------
      *  | Message Pagination method  |
@@ -2261,7 +2591,7 @@ $(document).ready(function ()
     */
     actionOnScroll(".wsus__chat_area_body", function () {
 
-        fetchMessages(getMessengerId());
+        fetchMessages(getConversationKey());
 
     }, true);
 

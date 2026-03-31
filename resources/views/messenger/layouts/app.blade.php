@@ -6,6 +6,7 @@
     <meta name="viewport"
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, target-densityDpi=device-dpi" />
         <meta name="id" content="">
+        <meta name="conversation-key" content="">
         <meta name="csrf_token" content="{{ csrf_token() }}">
         <meta name="auth_id" content="{{ auth()->user()->id }}">
         <meta name="asset-url" content="{{ asset('') }}">

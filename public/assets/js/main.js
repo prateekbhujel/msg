@@ -73,7 +73,14 @@ $(function () {
 
     // emoji js
     $(document).ready(function () {
-        $("#example1").emojioneArea();
+        if (!$("#example1").data('emojioneArea')) {
+            $("#example1").emojioneArea({
+                pickerPosition: "top",
+                hidePickerOnBlur: true,
+                search: false,
+                tones: true,
+            });
+        }
     });
 
 

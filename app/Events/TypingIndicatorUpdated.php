@@ -8,12 +8,20 @@ use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class MessageReactionUpdated implements ShouldBroadcast
+class TypingIndicatorUpdated implements ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
-    public function __construct(public mixed $message)
-    {
+    /**
+     * @param array<int, int> $recipientIds
+     */
+    public function __construct(
+        public array $recipientIds,
+        public string $conversationKey,
+        public int $fromId,
+        public string $fromName,
+        public bool $typing = true,
+    ) {
     }
 
     /**
@@ -21,7 +29,9 @@ class MessageReactionUpdated implements ShouldBroadcast
      */
     public function broadcastOn(): array
     {
-        return collect($this->message->broadcastRecipientIds())
+        return collect($this->recipientIds)
+            ->filter(fn ($id) => (int) $id > 0)
+            ->unique()
             ->map(fn ($id) => new PrivateChannel('message.' . $id))
             ->values()
             ->all();
@@ -33,9 +43,10 @@ class MessageReactionUpdated implements ShouldBroadcast
     public function broadcastWith(): array
     {
         return [
-            'message_id' => (int) $this->message->id,
-            'conversation_key' => $this->message->conversationKey(),
-            'reaction_map' => $this->message->reactionMap(),
+            'conversation_key' => $this->conversationKey,
+            'from_id' => $this->fromId,
+            'from_name' => $this->fromName,
+            'typing' => $this->typing,
         ];
     }
 }

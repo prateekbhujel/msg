@@ -8,19 +8,10 @@
             
             <h5>{{ $user->name }}</h5>
 
-            @if ($lastMessage->from_id == auth()->user()->id)
-                @if ($lastMessage->attachment)
-                    <p><span>You: </span>sent a photo. </p> 
-                @else
-                    <p><span>You:</span>{{ truncate($lastMessage->body) }}</p>
-                @endif 
+            @if ($lastMessage)
+                <p>{{ truncate($lastMessage->previewText(auth()->user()->id), 42) }}</p>
             @else
-                @if ($lastMessage->attachment)
-                    <p>{{ $user->name }} sent you a photo.</p>
-                @else
-                    <p>{{ truncate($lastMessage->body) }}</p>
-                    
-                @endif
+                <p>Say hi and start the conversation.</p>
             @endif
 
         </div>

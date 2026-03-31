@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Events\CallInvitation;
 use App\Events\CallSignal;
 use App\Models\CallSession;
+use App\Models\Message;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -39,8 +40,12 @@ class CallController extends Controller
             ->first();
 
         if ($existingSession) {
+            $historyMessage = $this->ensureHistoryMessage($existingSession, 'ringing');
+
             return response()->json([
                 'session' => $this->formatSession($existingSession->load(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name'])),
+                'history_message' => $this->formatHistoryMessage($historyMessage),
+                'history_message_html' => $this->renderHistoryMessageHtml($historyMessage),
             ]);
         }
 
@@ -52,10 +57,14 @@ class CallController extends Controller
             'status' => 'ringing',
         ])->load(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name']);
 
-        CallInvitation::dispatch($session);
+        $historyMessage = $this->ensureHistoryMessage($session, 'ringing');
+
+        CallInvitation::dispatch($session->load(['historyMessage']));
 
         return response()->json([
             'session' => $this->formatSession($session),
+            'history_message' => $this->formatHistoryMessage($historyMessage),
+            'history_message_html' => $this->renderHistoryMessageHtml($historyMessage),
         ], 201);
     }
 
@@ -78,12 +87,17 @@ class CallController extends Controller
             'accepted_at' => now(),
         ]);
 
-        CallSignal::dispatch($session->fresh(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name']), 'accepted', [
+        $historyMessage = $this->ensureHistoryMessage($session, 'active');
+
+        CallSignal::dispatch($session->fresh(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name', 'historyMessage']), 'accepted', [
             'accepted_at' => now()->toIso8601String(),
+            'history_message' => $this->formatHistoryMessage($historyMessage),
         ], $authId);
 
         return response()->json([
             'session' => $this->formatSession($session->fresh(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name'])),
+            'history_message' => $this->formatHistoryMessage($historyMessage),
+            'history_message_html' => $this->renderHistoryMessageHtml($historyMessage),
         ]);
     }
 
@@ -106,12 +120,19 @@ class CallController extends Controller
             'ended_at' => now(),
         ]);
 
-        CallSignal::dispatch($session->fresh(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name']), 'declined', [
+        $historyMessage = $this->ensureHistoryMessage($session, 'declined', [
+            'duration_seconds' => 0,
+        ]);
+
+        CallSignal::dispatch($session->fresh(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name', 'historyMessage']), 'declined', [
             'reason' => 'declined',
+            'history_message' => $this->formatHistoryMessage($historyMessage),
         ], $authId);
 
         return response()->json([
             'session' => $this->formatSession($session->fresh(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name'])),
+            'history_message' => $this->formatHistoryMessage($historyMessage),
+            'history_message_html' => $this->renderHistoryMessageHtml($historyMessage),
         ]);
     }
 
@@ -151,27 +172,39 @@ class CallController extends Controller
         $this->authorizeParticipant($session);
 
         if ($session->status === 'ended') {
+            $historyMessage = $this->ensureHistoryMessage($session, 'ended');
+
             return response()->json([
                 'ok' => true,
+                'history_message' => $this->formatHistoryMessage($historyMessage),
+                'history_message_html' => $this->renderHistoryMessageHtml($historyMessage),
             ]);
         }
 
+        $durationSeconds = $this->callDurationSeconds($session);
         $session->update([
             'status' => 'ended',
             'ended_at' => now(),
         ]);
 
+        $historyMessage = $this->ensureHistoryMessage($session, 'ended', [
+            'duration_seconds' => $durationSeconds,
+        ]);
+
         CallSignal::dispatch(
-            $session->fresh(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name']),
+            $session->fresh(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name', 'historyMessage']),
             'hangup',
             [
                 'reason' => 'hangup',
+                'history_message' => $this->formatHistoryMessage($historyMessage),
             ],
             $authId
         );
 
         return response()->json([
             'ok' => true,
+            'history_message' => $this->formatHistoryMessage($historyMessage),
+            'history_message_html' => $this->renderHistoryMessageHtml($historyMessage),
         ]);
     }
 
@@ -191,6 +224,8 @@ class CallController extends Controller
             'uuid' => $session->uuid,
             'call_type' => $session->call_type,
             'status' => $session->status,
+            'accepted_at' => $session->accepted_at?->toIso8601String(),
+            'ended_at' => $session->ended_at?->toIso8601String(),
             'caller' => [
                 'id' => $session->caller?->id ? (int) $session->caller->id : null,
                 'name' => $session->caller?->name,
@@ -209,5 +244,96 @@ class CallController extends Controller
     protected function authUserId(): int
     {
         return (int) Auth::id();
+    }
+
+    protected function ensureHistoryMessage(CallSession $session, string $status, array $extraMeta = []): Message
+    {
+        $session->loadMissing('historyMessage');
+
+        $historyMessage = $session->historyMessage ?: new Message();
+        $durationSeconds = (int) data_get($extraMeta, 'duration_seconds', 0);
+
+        $historyMessage->from_id = $session->caller_id;
+        $historyMessage->to_id = $session->callee_id;
+        $historyMessage->message_type = 'call';
+        $historyMessage->body = $this->callHistoryBody($session, $status, $durationSeconds);
+        $historyMessage->attachment = null;
+        $historyMessage->meta = array_merge([
+            'session_uuid' => $session->uuid,
+            'call_type' => $session->call_type,
+            'status' => $status,
+            'direction' => 'outgoing',
+            'started_at' => $session->accepted_at?->toIso8601String() ?: $session->created_at?->toIso8601String(),
+            'ended_at' => $session->ended_at?->toIso8601String(),
+            'duration_seconds' => $durationSeconds,
+        ], $extraMeta);
+        $historyMessage->seen = false;
+        $historyMessage->save();
+
+        if ($session->history_message_id !== $historyMessage->id) {
+            $session->forceFill([
+                'history_message_id' => $historyMessage->id,
+            ])->save();
+        }
+
+        return $historyMessage->fresh();
+    }
+
+    protected function callHistoryBody(CallSession $session, string $status, int $durationSeconds = 0): string
+    {
+        $callType = ucfirst($session->call_type);
+
+        return match ($status) {
+            'ringing' => "Calling {$callType}...",
+            'active' => "{$callType} call started",
+            'declined' => "{$callType} call declined",
+            default => $durationSeconds > 0
+                ? "{$callType} call ended • " . $this->formatDuration($durationSeconds)
+                : "{$callType} call ended",
+        };
+    }
+
+    protected function callDurationSeconds(CallSession $session): int
+    {
+        $startedAt = $session->accepted_at ?? $session->created_at;
+        $endedAt = $session->ended_at ?? now();
+
+        return $startedAt ? $startedAt->diffInSeconds($endedAt) : 0;
+    }
+
+    protected function formatDuration(int $seconds): string
+    {
+        $hours = intdiv($seconds, 3600);
+        $minutes = intdiv($seconds % 3600, 60);
+        $remainingSeconds = $seconds % 60;
+
+        if ($hours > 0) {
+            return sprintf('%02d:%02d:%02d', $hours, $minutes, $remainingSeconds);
+        }
+
+        return sprintf('%02d:%02d', $minutes, $remainingSeconds);
+    }
+
+    protected function formatHistoryMessage(Message $message): array
+    {
+        return [
+            'id' => $message->id,
+            'body' => $message->body,
+            'from_id' => (int) $message->from_id,
+            'to_id' => (int) $message->to_id,
+            'message_type' => $message->message_type ?? 'text',
+            'attachment' => $message->primaryAttachment()['path'] ?? null,
+            'attachments' => $message->attachmentItems(),
+            'meta' => $message->meta ?? [],
+            'seen' => (bool) $message->seen,
+            'created_at' => $message->created_at?->toIso8601String(),
+        ];
+    }
+
+    protected function renderHistoryMessageHtml(Message $message): string
+    {
+        return view('messenger.components.message-card', [
+            'message' => $message,
+        ])->render();
     }
 }

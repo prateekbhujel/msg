@@ -5,6 +5,7 @@
                 <div>
                     <h5 class="modal-title call-title mb-1">Call</h5>
                     <p class="call-status text-white-50 mb-0">Waiting...</p>
+                    <div class="call-duration small text-white-50 mt-1">00:00</div>
                 </div>
                 <button type="button" class="btn-close btn-close-white call-close" aria-label="Close"></button>
             </div>

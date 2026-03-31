@@ -33,6 +33,27 @@ test('profile information can be updated', function () {
     $this->assertNull($user->email_verified_at);
 });
 
+test('messenger username is normalized without forcing the at sign in the form', function () {
+    $user = User::factory()->create();
+
+    $response = $this
+        ->actingAs($user)
+        ->postJson(route('messenger.profile.update'), [
+            'name' => 'Test User',
+            'user_name' => 'prateekbhujel',
+            'email' => 'prateekbhujelpb+new@example.com',
+        ]);
+
+    $response
+        ->assertOk()
+        ->assertJson(['message' => 'Updated Successfully.']);
+
+    $user->refresh();
+
+    $this->assertSame('@prateekbhujel', $user->user_name);
+    $this->assertSame('prateekbhujelpb+new@example.com', $user->email);
+});
+
 test('email verification status is unchanged when the email address is unchanged', function () {
     $user = User::factory()->create();
 

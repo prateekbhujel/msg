@@ -3,6 +3,7 @@
 namespace App\Events;
 
 use App\Models\CallSession;
+use App\Models\Message as MessageModel;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
@@ -59,8 +60,45 @@ class CallSignal implements ShouldBroadcastNow
                 ],
             ],
             'payload' => $this->payload,
+            'history_message' => $this->historyMessagePayload(),
+            'history_message_html' => $this->historyMessageHtml(),
             'from_id' => $fromId,
             'to_id' => $callerId === $fromId ? $calleeId : $callerId,
         ];
+    }
+
+    protected function historyMessagePayload(): ?array
+    {
+        $message = $this->session->historyMessage;
+
+        if (! $message instanceof MessageModel) {
+            return null;
+        }
+
+        return [
+            'id' => $message->id,
+            'body' => $message->body,
+            'from_id' => (int) $message->from_id,
+            'to_id' => (int) $message->to_id,
+            'message_type' => $message->message_type ?? 'text',
+            'attachment' => $message->primaryAttachment()['path'] ?? null,
+            'attachments' => $message->attachmentItems(),
+            'meta' => $message->meta ?? [],
+            'seen' => (bool) $message->seen,
+            'created_at' => $message->created_at?->toIso8601String(),
+        ];
+    }
+
+    protected function historyMessageHtml(): ?string
+    {
+        $message = $this->session->historyMessage;
+
+        if (! $message instanceof MessageModel) {
+            return null;
+        }
+
+        return view('messenger.components.message-card', [
+            'message' => $message,
+        ])->render();
     }
 }

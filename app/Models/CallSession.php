@@ -18,11 +18,13 @@ class CallSession extends Model
         'status',
         'accepted_at',
         'ended_at',
+        'history_message_id',
     ];
 
     protected $casts = [
         'caller_id' => 'integer',
         'callee_id' => 'integer',
+        'history_message_id' => 'integer',
         'accepted_at' => 'datetime',
         'ended_at' => 'datetime',
     ];
@@ -35,5 +37,10 @@ class CallSession extends Model
     public function callee(): BelongsTo
     {
         return $this->belongsTo(User::class, 'callee_id');
+    }
+
+    public function historyMessage(): BelongsTo
+    {
+        return $this->belongsTo(Message::class, 'history_message_id');
     }
 }

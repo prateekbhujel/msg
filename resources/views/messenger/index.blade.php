@@ -35,17 +35,24 @@
             <div class="wsus__chat_area_footer">
                 <div class="footer_message">
                     <div class="img d-none attachment-block">
-                        <img src="" alt="User" class="img-fluid attachment-preview">
+                        <div class="attachment-preview-list d-flex flex-wrap gap-2"></div>
                         <span class="cancel-attachment"><i class="far fa-times"></i></span>
                     </div>
                     <form class="message-form" enctype="multipart/form-data">
                         <div class="file">
                             <label for="file"><i class="far fa-plus"></i></label>
-                            <input id="file" class="attachment-input" name="attachment" type="file" hidden accept="image/*">
+                            <input id="file" class="attachment-input" name="attachments[]" type="file" hidden multiple accept="image/*,audio/*,video/*,.pdf,.txt,.doc,.docx,.xls,.xlsx,.zip,.rar">
+                        </div>
+                        <div class="file">
+                            <button type="button" class="voice-record-toggle" title="Record voice note">
+                                <i class="fas fa-microphone"></i>
+                            </button>
+                            <span class="voice-record-status d-none small text-danger ms-2"></span>
                         </div>
                         <textarea class="message-input" id="example1" rows="1" placeholder="Type a message.." name="message"></textarea>
                         <button type="submit"><i class="fas fa-paper-plane"></i></button>
                     </form>
+                    <div class="voice-preview d-none"></div>
                 </div>
             </div>
         </div>

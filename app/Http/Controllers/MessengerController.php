@@ -7,6 +7,7 @@ use App\Models\Favourite;
 use App\Models\Message;
 use App\Models\User;
 use App\Traits\FileUploadTrait;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -88,7 +89,16 @@ class MessengerController extends Controller
         $content = '';
         foreach ($sharedPhotos as $photo) 
         {
-            $content .= view('messenger.components.gallery-item', compact('photo'))->render();
+            foreach ($photo->attachmentItems() as $attachment) {
+                if (($attachment['type'] ?? null) !== 'image') {
+                    continue;
+                }
+
+                $content .= view('messenger.components.gallery-item', [
+                    'photo' => $photo,
+                    'attachment' => $attachment,
+                ])->render();
+            }
 
         }
 
@@ -114,17 +124,26 @@ class MessengerController extends Controller
         $request->validate([
             'id' => ['required', 'integer'],
             'temporaryMsgId' => ['required'],
-            'attachment' => ['nullable', 'max:2048', 'image'],
+            'message' => ['nullable', 'string', 'max:5000'],
+            'attachment' => ['nullable', 'file', 'max:10240'],
+            'attachments' => ['nullable', 'array'],
+            'attachments.*' => ['nullable', 'file', 'max:10240'],
+            'voice_message' => ['nullable', 'file', 'max:51200', 'mimes:webm,ogg,mp3,wav,m4a,aac'],
         ]);
 
-        $attachmentPath = $this->uploadFile($request, 'attachment');
+        $attachments = $this->collectAttachments($request);
+        $voiceAttachment = $this->collectVoiceAttachment($request);
+        $allAttachments = array_merge($attachments, $voiceAttachment ? [$voiceAttachment] : []);
+
         $message = new Message();
         $message->from_id = Auth::user()->id;
         $message->to_id = $request->id;
+        $message->message_type = $voiceAttachment && empty($attachments) ? 'voice' : (!empty($allAttachments) ? 'media' : 'text');
         $message->body = $request->message;
 
-        if ($attachmentPath)
-            $message->attachment = json_encode($attachmentPath);
+        if (! empty($allAttachments)) {
+            $message->attachment = $allAttachments;
+        }
         
         $message->save();
 
@@ -134,7 +153,7 @@ class MessengerController extends Controller
             MessageEvent::dispatch($message);
 
         return response()->json([
-            'message' => $message->attachment ? $this->messageCard($message, true) : $this->messageCard($message),
+            'message' => $this->messageCard($message),
             'tempID' => $request->temporaryMsgId,
         ]);
 
@@ -152,7 +171,7 @@ class MessengerController extends Controller
     */
     public function messageCard($message, $attachment = false)
     {
-        return view('messenger.components.message-card', compact('message', 'attachment'))->render();
+        return view('messenger.components.message-card', compact('message'))->render();
 
     } //End Method
 
@@ -369,10 +388,9 @@ class MessengerController extends Controller
         $message = Message::findOrFail($request->message_id);
 
         if ($message->from_id == Auth::user()->id) {
-            if ($message->attachment != null) {
-                // Construct the full path using public_path and replace escaped forward slashes
-                $attachmentPath = public_path(str_replace(['\/', '"'], ['/', ''], $message->attachment));
-                // dd($attachmentPath);
+            foreach ($message->attachmentItems() as $attachment) {
+                $attachmentPath = public_path($attachment['path']);
+
                 if (file_exists($attachmentPath)) {
                     unlink($attachmentPath);
                 }
@@ -386,6 +404,51 @@ class MessengerController extends Controller
         }
 
         return;
+    }
+
+    protected function collectAttachments(Request $request): array
+    {
+        $attachments = [];
+
+        if ($request->hasFile('attachments')) {
+            $files = $request->file('attachments');
+            $files = is_array($files) ? $files : [$files];
+
+            foreach ($files as $file) {
+                if ($file instanceof UploadedFile) {
+                    $storedPath = $this->storeUploadedFile($file, 'uploads/messages');
+                    $attachments[] = $this->buildAttachmentPayload($file, $storedPath);
+                }
+            }
+        }
+
+        if ($request->hasFile('attachment')) {
+            $file = $request->file('attachment');
+
+            if ($file instanceof UploadedFile) {
+                $storedPath = $this->storeUploadedFile($file, 'uploads/messages');
+                $attachments[] = $this->buildAttachmentPayload($file, $storedPath);
+            }
+        }
+
+        return $attachments;
+    }
+
+    protected function collectVoiceAttachment(Request $request): ?array
+    {
+        if (! $request->hasFile('voice_message')) {
+            return null;
+        }
+
+        $file = $request->file('voice_message');
+
+        if (! $file instanceof UploadedFile) {
+            return null;
+        }
+
+        $storedPath = $this->storeUploadedFile($file, 'uploads/voice-notes');
+
+        return $this->buildAttachmentPayload($file, $storedPath);
     }
     
 }

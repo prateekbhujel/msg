@@ -24,27 +24,31 @@ class UserProfileController extends Controller
     */
     public function update(Request $request)
     {
+        $request->merge([
+            'user_name' => $request->input('user_name', $request->input('user_id')),
+        ]);
+
         $request->validate([
             'avatar' => ['nullable', 'image', 'max:500'],
             'name' => ['required', 'string', 'max:50'],
-            'user_id' => [
+            'user_name' => [
                 'required',
                 'string',
                 'min:7',
                 'max:100',
-                'regex:/^@[a-z0-9._-]+$/', // Only lowercase letters, numbers, dots, hyphens, and underscores and must have @ in the beginning
-                'unique:users,user_name,' . auth()->user()->id
+                'regex:/^@?[a-z0-9._-]+$/',
+                'unique:users,user_name,' . auth()->user()->id,
             ],
             'email' => [
                 'required',
                 'string',
                 'email',
                 'max:100',
-                'unique:users,email,' . auth()->user()->id
+                'unique:users,email,' . auth()->user()->id,
             ],
         ],
          [
-            'user_id.regex' => 'Invalid characters. Must start with @. [a,12,.,-,_]',
+            'user_name.regex' => 'Invalid characters. Use letters, numbers, dots, hyphens, and underscores.',
         ]);
         
         $user = Auth::user();
@@ -67,12 +71,8 @@ class UserProfileController extends Controller
 
         $user->name = $request->name;
         
-        // Remove any '@' characters from the input and ensure the username starts with '@'
-        $user_name = str_replace('@', '', $request->user_id);
-        if (substr($user_name, 0, 1) !== '@') {
-            $user_name = '@' . $user_name;
-        }
-        $user->user_name = strtolower($user_name);
+        $user_name = strtolower(ltrim(trim($request->user_name), '@'));
+        $user->user_name = '@' . $user_name;
         
         $user->email = $request->email;
         $user->save();

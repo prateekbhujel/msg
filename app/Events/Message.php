@@ -46,14 +46,18 @@ class Message implements ShouldBroadcast
      */
     public function broadcastWith(): array
     {
+        $attachments = $this->message->attachmentItems();
+
         return [
             'id'            => $this->message->id,
             'body'          => $this->message->body,
             'to_id'         => $this->message->to_id,
-            'attachment'    => $this->message->attachment
-                ? asset(json_decode($this->message->attachment))
-                : null,
+            'attachment'    => $attachments[0]['path'] ?? null,
+            'attachments'   => $attachments,
+            'message_type'  => $this->message->message_type ?? 'text',
+            'meta'          => $this->message->meta ?? [],
             'from_id'       => $this->message->from_id,
+            'created_at'    => $this->message->created_at?->toIso8601String(),
         ];
         
     } //End Method

@@ -31,7 +31,10 @@ it('creates a call session and dispatches an invitation', function () {
     $response->assertCreated()
         ->assertJsonPath('session.call_type', 'video')
         ->assertJsonPath('session.caller.id', $caller->id)
-        ->assertJsonPath('session.callee.id', $callee->id);
+        ->assertJsonPath('session.callee.id', $callee->id)
+        ->assertJsonPath('history_message.message_type', 'call')
+        ->assertJsonPath('history_message.meta.status', 'ringing')
+        ->assertJsonStructure(['history_message_html']);
 
     $this->assertDatabaseHas('call_sessions', [
         'caller_id' => $caller->id,
@@ -59,7 +62,9 @@ it('allows the callee to accept a call and broadcasts the acceptance', function 
     $response->assertOk()
         ->assertJsonPath('session.status', 'active')
         ->assertJsonPath('session.caller.id', $caller->id)
-        ->assertJsonPath('session.callee.id', $callee->id);
+        ->assertJsonPath('session.callee.id', $callee->id)
+        ->assertJsonPath('history_message.message_type', 'call')
+        ->assertJsonPath('history_message.meta.status', 'active');
 
     $session->refresh();
 
@@ -108,6 +113,8 @@ it('hangs up an active call and marks it ended', function () {
     $response = $this->actingAs($caller)->deleteJson(route('messenger.calls.hangup', ['session' => $session->uuid]));
 
     $response->assertOk()->assertJson(['ok' => true]);
+    $response->assertJsonPath('history_message.message_type', 'call');
+    $response->assertJsonPath('history_message.meta.status', 'ended');
 
     $session->refresh();
 

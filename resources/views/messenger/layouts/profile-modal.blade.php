@@ -13,7 +13,7 @@ aria-hidden="true">
                 </div>
                 <p>Edit information</p>
                 <input type="text" name="name" placeholder="Name" value="{{ old('name', auth()->user()->name) }}">
-                <input type="text" name="user_id" placeholder="User Id" value="{{ old('user_id', auth()->user()->user_name) }}">
+                <input type="text" name="user_name" placeholder="Username" value="{{ old('user_name', ltrim(auth()->user()->user_name, '@')) }}">
                 <input type="email" name="email" placeholder="Email" value="{{ old('email', auth()->user()->email) }}">
                 <p>Change password</p>
                 <div class="row">

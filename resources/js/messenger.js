@@ -7,6 +7,14 @@ import { initializeCallManager } from './call-manager';
 
 var temporaryMsgId = 0;
 var activeUsersIds = [];
+var voiceRecorder = null;
+var voiceRecordingStream = null;
+var voiceRecordingChunks = [];
+var voiceRecordingBlob = null;
+var voiceRecordingUrl = null;
+var voiceRecordingStopResolver = null;
+var voiceRecordingActive = false;
+var attachmentPreviewUrls = [];
 
 const messageForm             = $(".message-form"),
       messageInput            = $(".message-input"),
@@ -14,7 +22,13 @@ const messageForm             = $(".message-form"),
       csrf_token              = $("meta[name=csrf_token]").attr("content"),
       auth_id                 = $("meta[name=auth_id]").attr("content"),
       assetUrl                = $("meta[name=asset-url]").attr("content") || `${window.location.origin}/`,
-      messengerContactBox     = $(".messenger-contacts");
+      messengerContactBox     = $(".messenger-contacts"),
+      attachmentInput         = $(".attachment-input"),
+      attachmentPreviewBlock  = $(".attachment-block"),
+      attachmentPreviewList   = $(".attachment-preview-list"),
+      voicePreview            = $(".voice-preview"),
+      voiceRecordToggle       = $(".voice-record-toggle"),
+      voiceRecordStatus       = $(".voice-record-status");
 
 const getMessengerId          = () => $("meta[name=id]").attr("content");
 const setMessengerId          = (id) => $("meta[name=id]").attr("content", id);
@@ -30,6 +44,481 @@ function resolveAssetUrl(path)
     }
 
     return new URL(path.replace(/^\/+/, ""), assetUrl).toString();
+}
+
+function truncateText(value, limit = 24)
+{
+    if (!value) {
+        return "";
+    }
+
+    if (value.length <= limit) {
+        return value;
+    }
+
+    return `${value.slice(0, Math.max(limit - 1, 1))}…`;
+}
+
+function formatDurationSeconds(seconds)
+{
+    const totalSeconds = Number(seconds || 0);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const remainingSeconds = totalSeconds % 60;
+
+    if (hours > 0) {
+        return [hours, minutes, remainingSeconds].map((part) => String(part).padStart(2, '0')).join(':');
+    }
+
+    return [minutes, remainingSeconds].map((part) => String(part).padStart(2, '0')).join(':');
+}
+
+function formatTimestampLabel(timestamp)
+{
+    if (!timestamp) {
+        return 'Just now';
+    }
+
+    const time = new Date(timestamp);
+
+    if (Number.isNaN(time.getTime())) {
+        return 'Just now';
+    }
+
+    const diffSeconds = Math.max(0, Math.floor((Date.now() - time.getTime()) / 1000));
+
+    if (diffSeconds <= 60) {
+        return diffSeconds <= 1 ? 'Just now' : `${diffSeconds}s ago`;
+    }
+
+    const diffMinutes = Math.round(diffSeconds / 60);
+
+    if (diffMinutes <= 60) {
+        return `${diffMinutes}m ago`;
+    }
+
+    const diffHours = Math.round(diffSeconds / 3600);
+
+    if (diffHours <= 24) {
+        return `${diffHours}h ago`;
+    }
+
+    return time.toLocaleDateString(undefined, {
+        day: 'numeric',
+        month: 'short',
+        year: '2-digit',
+    });
+}
+
+function escapeHtml(value)
+{
+    return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+}
+
+function normalizeAttachments(attachments, messageType = 'text')
+{
+    if (Array.isArray(attachments) && attachments.length > 0) {
+        return attachments.map((attachment) => {
+            if (typeof attachment === 'string') {
+                return {
+                    path: attachment,
+                    name: attachment.split('/').pop(),
+                    type: messageType === 'voice' ? 'audio' : 'image',
+                };
+            }
+
+            return attachment;
+        });
+    }
+
+    if (typeof attachments === 'string' && attachments.length > 0) {
+        return [
+            {
+                path: attachments,
+                name: attachments.split('/').pop(),
+                type: messageType === 'voice' ? 'audio' : 'image',
+            },
+        ];
+    }
+
+    return [];
+}
+
+function guessAttachmentTypeFromFile(file)
+{
+    if (!file || !file.type) {
+        return 'file';
+    }
+
+    if (file.type.startsWith('image/')) {
+        return 'image';
+    }
+
+    if (file.type.startsWith('audio/')) {
+        return 'audio';
+    }
+
+    if (file.type.startsWith('video/')) {
+        return 'video';
+    }
+
+    return 'file';
+}
+
+function formatCallStatusLabel(status)
+{
+    if (!status) {
+        return 'Ended';
+    }
+
+    return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+function buildGalleryGroupId(messageId)
+{
+    return `gallery-${messageId || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`}`;
+}
+
+function clearAttachmentPreviewUrls()
+{
+    attachmentPreviewUrls.forEach((url) => URL.revokeObjectURL(url));
+    attachmentPreviewUrls = [];
+}
+
+function updateComposerVoiceStatus(text, active = false)
+{
+    if (!voiceRecordStatus.length) {
+        return;
+    }
+
+    voiceRecordStatus.text(text).toggleClass('d-none', !text);
+    voiceRecordStatus.toggleClass('text-danger', active);
+}
+
+function renderAttachmentPreview()
+{
+    const files = Array.from(attachmentInput[0]?.files || []);
+
+    clearAttachmentPreviewUrls();
+
+    if (!files.length) {
+        attachmentPreviewList.empty();
+        attachmentPreviewBlock.addClass('d-none');
+        return;
+    }
+
+    const markup = files.map((file) => {
+        const url = URL.createObjectURL(file);
+        attachmentPreviewUrls.push(url);
+        const attachmentType = guessAttachmentTypeFromFile(file);
+        const safeFileName = escapeHtml(file.name);
+        const icon = attachmentType === 'audio'
+            ? 'fas fa-music'
+            : attachmentType === 'video'
+                ? 'fas fa-film'
+                : attachmentType === 'file'
+                    ? 'fas fa-file-alt'
+                    : 'fas fa-image';
+
+        const mediaMarkup = attachmentType === 'image'
+            ? `<img src="${url}" alt="${safeFileName}" class="img-fluid rounded-3" style="width: 92px; height: 92px; object-fit: cover;">`
+            : `<div class="rounded-3 bg-light d-flex align-items-center justify-content-center" style="width: 92px; height: 92px;"><i class="${icon} fs-3 text-primary"></i></div>`;
+
+        return `
+            <div class="border rounded-3 bg-white p-2 d-flex flex-column gap-2" style="width: 120px;">
+                ${mediaMarkup}
+                <span class="small text-truncate" title="${safeFileName}">${truncateText(safeFileName, 18)}</span>
+            </div>
+        `;
+    }).join('');
+
+    attachmentPreviewList.html(markup);
+    attachmentPreviewBlock.removeClass('d-none');
+}
+
+function clearComposerAttachments()
+{
+    clearAttachmentPreviewUrls();
+    attachmentInput.val('');
+    attachmentPreviewList.empty();
+    attachmentPreviewBlock.addClass('d-none');
+}
+
+function clearVoiceRecordingPreview()
+{
+    if (voiceRecordingUrl) {
+        URL.revokeObjectURL(voiceRecordingUrl);
+        voiceRecordingUrl = null;
+    }
+
+    voiceRecordingBlob = null;
+    voicePreview.addClass('d-none').empty();
+    updateComposerVoiceStatus('', false);
+}
+
+function resetVoiceRecordingState()
+{
+    if (voiceRecorder && voiceRecordingActive) {
+        voiceRecorder.stop();
+    }
+
+    if (voiceRecordingStream) {
+        voiceRecordingStream.getTracks().forEach((track) => track.stop());
+    }
+
+    voiceRecorder = null;
+    voiceRecordingStream = null;
+    voiceRecordingChunks = [];
+    voiceRecordingActive = false;
+
+    if (voiceRecordingStopResolver) {
+        voiceRecordingStopResolver();
+        voiceRecordingStopResolver = null;
+    }
+}
+
+function stopVoiceRecording()
+{
+    return new Promise((resolve) => {
+        if (!voiceRecorder || !voiceRecordingActive) {
+            resolve();
+            return;
+        }
+
+        voiceRecordingStopResolver = () => {
+            resolve();
+        };
+
+        voiceRecorder.stop();
+    });
+}
+
+async function startVoiceRecording()
+{
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || typeof MediaRecorder === 'undefined') {
+        notyf.error('Voice recording is not supported in this browser.');
+        return;
+    }
+
+    if (voiceRecordingActive) {
+        await stopVoiceRecording();
+        return;
+    }
+
+    try {
+        clearVoiceRecordingPreview();
+        updateComposerVoiceStatus('Recording voice note...', true);
+        voiceRecordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        voiceRecordingChunks = [];
+        voiceRecorder = new MediaRecorder(voiceRecordingStream);
+        voiceRecordingActive = true;
+        voiceRecordToggle.addClass('active');
+
+        voiceRecorder.ondataavailable = (event) => {
+            if (event.data && event.data.size > 0) {
+                voiceRecordingChunks.push(event.data);
+            }
+        };
+
+        voiceRecorder.onstop = () => {
+            const mimeType = voiceRecorder.mimeType || 'audio/webm';
+            const blob = new Blob(voiceRecordingChunks, { type: mimeType });
+
+            if (voiceRecordingStream) {
+                voiceRecordingStream.getTracks().forEach((track) => track.stop());
+            }
+
+            voiceRecordingBlob = blob.size > 0 ? blob : null;
+
+            if (voiceRecordingBlob) {
+                if (voiceRecordingUrl) {
+                    URL.revokeObjectURL(voiceRecordingUrl);
+                }
+
+                voiceRecordingUrl = URL.createObjectURL(voiceRecordingBlob);
+                voicePreview.html(`
+                    <div class="border rounded-4 bg-white p-3 d-flex align-items-center gap-3">
+                        <i class="fas fa-microphone text-danger fs-5"></i>
+                        <div class="flex-grow-1">
+                            <div class="fw-semibold">Voice note ready</div>
+                            <audio controls preload="none" class="w-100 mt-2">
+                                <source src="${voiceRecordingUrl}" type="${mimeType}">
+                            </audio>
+                        </div>
+                    </div>
+                `).removeClass('d-none');
+            }
+
+            voiceRecordingChunks = [];
+            voiceRecordingActive = false;
+            voiceRecordToggle.removeClass('active');
+            updateComposerVoiceStatus('', false);
+
+            if (voiceRecordingStopResolver) {
+                const resolver = voiceRecordingStopResolver;
+                voiceRecordingStopResolver = null;
+                resolver();
+            }
+        };
+
+        voiceRecorder.start();
+    } catch (error) {
+        voiceRecordingActive = false;
+        voiceRecordToggle.removeClass('active');
+        updateComposerVoiceStatus('', false);
+        notyf.error('Unable to access your microphone.');
+    }
+}
+
+function renderMessageMedia(attachments, messageType = 'text', messageId = null)
+{
+    const normalizedAttachments = normalizeAttachments(attachments, messageType);
+
+    if (!normalizedAttachments.length) {
+        return '';
+    }
+
+    const galleryGroupId = buildGalleryGroupId(messageId);
+
+    return `
+        <div class="message-attachment-grid d-grid gap-2" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));">
+            ${normalizedAttachments.map((attachment) => {
+                const attachmentUrl = resolveAssetUrl(attachment.path);
+                const attachmentType = attachment.type || 'file';
+                const attachmentName = escapeHtml(attachment.name || attachmentUrl.split('/').pop());
+
+                if (attachmentType === 'image') {
+                    return `
+                        <a class="venobox vbox-item rounded-4 overflow-hidden" data-gall="${galleryGroupId}" href="${attachmentUrl}">
+                            <img src="${attachmentUrl}" alt="${attachmentName}" class="img-fluid w-100" loading="lazy">
+                        </a>
+                    `;
+                }
+
+                if (attachmentType === 'audio') {
+                    return `
+                        <div class="rounded-4 bg-light p-3">
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <i class="fas fa-music text-primary"></i>
+                                <span class="small fw-semibold">${truncateText(attachmentName, 24)}</span>
+                            </div>
+                            <audio controls preload="none" class="w-100">
+                                <source src="${attachmentUrl}" type="${attachment.mime || 'audio/mpeg'}">
+                            </audio>
+                        </div>
+                    `;
+                }
+
+                if (attachmentType === 'video') {
+                    return `
+                        <video controls playsinline class="w-100 rounded-4" preload="metadata" style="max-height: 320px; object-fit: cover;">
+                            <source src="${attachmentUrl}" type="${attachment.mime || 'video/mp4'}">
+                        </video>
+                    `;
+                }
+
+                return `
+                    <a href="${attachmentUrl}" class="rounded-4 border bg-light d-flex align-items-center gap-3 p-3 text-decoration-none text-dark" download>
+                        <span class="rounded-circle bg-white d-inline-flex align-items-center justify-content-center flex-shrink-0" style="width: 42px; height: 42px;">
+                            <i class="fas fa-file-alt text-primary"></i>
+                        </span>
+                        <span class="small fw-semibold text-truncate" style="max-width: 220px;">${attachmentName}</span>
+                    </a>
+                `;
+            }).join('')}
+        </div>
+    `;
+}
+
+function renderReceivedMessageCard(e)
+{
+    const messageType = e.message_type || 'text';
+    const attachments = normalizeAttachments(e.attachments || e.attachment, messageType);
+    const isMine = Number(e.from_id) === Number(auth_id);
+    const bodyText = typeof e.body === 'string' ? e.body.trim() : (e.body || '');
+    const body = escapeHtml(bodyText);
+    const messageTime = formatTimestampLabel(e.created_at);
+
+    if (messageType === 'call') {
+        const callType = e?.meta?.call_type || 'video';
+        const status = e?.meta?.status || 'ended';
+        const duration = formatDurationSeconds(e?.meta?.duration_seconds || 0);
+        const callIcon = callType === 'audio' ? 'fas fa-phone' : 'fas fa-video';
+        const badgeClass = status === 'active'
+            ? 'bg-info text-dark'
+            : status === 'declined'
+                ? 'bg-danger text-white'
+                : status === 'ringing'
+                    ? 'bg-warning text-dark'
+                    : 'bg-success text-white';
+
+        return `
+            <div class="wsus__single_chat_area message-card" data-id="${e.id}" data-message-type="call">
+                <div class="wsus__single_chat ${isMine ? 'chat_right' : ''}">
+                    <div class="call_history_card rounded-4 p-3 border border-2 ${badgeClass}">
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="flex-shrink-0 rounded-circle bg-white text-dark d-flex align-items-center justify-content-center" style="width: 54px; height: 54px;">
+                                <i class="${callIcon} fs-5"></i>
+                            </div>
+                            <div class="flex-grow-1">
+                                <div class="fw-semibold mb-1">${body || `${callType.charAt(0).toUpperCase()}${callType.slice(1)} call`}</div>
+                                <div class="small">
+                                    <span>${formatCallStatusLabel(status)}</span>
+                                    <span class="mx-1">•</span>
+                                    <span>${duration}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="time">${messageTime} · ${duration}</span>
+                    ${isMine ? `<a class="action dlt-message" href="javascript:void(0)" data-msgid="${e.id}"><i class="fas fa-trash"></i></a>` : ''}
+                </div>
+            </div>
+        `;
+    }
+
+    const mediaMarkup = renderMessageMedia(attachments, messageType, e.id);
+
+    if (messageType === 'voice') {
+        return `
+            <div class="wsus__single_chat_area message-card" data-id="${e.id}" data-message-type="voice">
+                <div class="wsus__single_chat ${isMine ? 'chat_right' : ''}">
+                    ${body ? `<p class="messages">${body}</p>` : ''}
+                    ${mediaMarkup}
+                    <span class="time">${messageTime}</span>
+                    ${isMine ? `<a class="action dlt-message" href="javascript:void(0)" data-msgid="${e.id}"><i class="fas fa-trash"></i></a>` : ''}
+                </div>
+            </div>
+        `;
+    }
+
+    if (attachments.length > 0) {
+        return `
+            <div class="wsus__single_chat_area message-card" data-id="${e.id}" data-message-type="${messageType}">
+                <div class="wsus__single_chat ${isMine ? 'chat_right' : ''}">
+                    ${body ? `<p class="messages">${body}</p>` : ''}
+                    ${mediaMarkup}
+                    <span class="time">${messageTime}</span>
+                    ${isMine ? `<a class="action dlt-message" href="javascript:void(0)" data-msgid="${e.id}"><i class="fas fa-trash"></i></a>` : ''}
+                </div>
+            </div>
+        `;
+    }
+
+    return `
+        <div class="wsus__single_chat_area message-card" data-id="${e.id}" data-message-type="${messageType}">
+            <div class="wsus__single_chat ${isMine ? 'chat_right' : ''}">
+                ${body ? `<p class="messages">${body}</p>` : ''}
+                <span class="time">${messageTime}</span>
+                ${isMine ? `<a class="action dlt-message" href="javascript:void(0)" data-msgid="${e.id}"><i class="fas fa-trash"></i></a>` : ''}
+            </div>
+        </div>
+    `;
 }
 
 /**
@@ -59,18 +548,34 @@ function imagePreview(input, selector) {
     }
 
 }//End Method
-function sendMessage() 
+async function sendMessage() 
 {
     temporaryMsgId += 1;
     let tempID = `temp_${temporaryMsgId}`; //temp_1, temp_2 ....
-    let hasAttachment = !!$(".attachment-input").val();
     const inputValue = messageInput.val();
 
-    if (inputValue.trim().length > 0 || hasAttachment) {
+    if (voiceRecordingActive) {
+        await stopVoiceRecording();
+    }
+
+    const hasAttachment = (attachmentInput[0]?.files?.length || 0) > 0;
+    const hasVoiceMessage = !!voiceRecordingBlob;
+
+    if (inputValue.trim().length > 0 || hasAttachment || hasVoiceMessage) {
         const formData = new FormData(messageForm[0]);
         formData.append("id", getMessengerId());
         formData.append("temporaryMsgId", tempID);
         formData.append("_token", csrf_token);
+
+        if (hasVoiceMessage) {
+            const voiceFile = new File(
+                [voiceRecordingBlob],
+                `voice-note-${Date.now()}.webm`,
+                { type: voiceRecordingBlob.type || 'audio/webm' }
+            );
+
+            formData.append('voice_message', voiceFile, voiceFile.name);
+        }
 
         $.ajax({
             method: "POST",
@@ -81,8 +586,14 @@ function sendMessage()
             contentType: false,
             beforeSend: function () {
                 //Add temp message on dom
-                if (hasAttachment) {
-                    messageBoxContainer.append(sendTempMessageCard(inputValue, tempID, true));
+                if (hasAttachment || hasVoiceMessage) {
+                    messageBoxContainer.append(
+                        sendTempMessageCard(
+                            inputValue.trim().length > 0 ? inputValue : (hasVoiceMessage ? 'Voice note' : ''),
+                            tempID,
+                            true
+                        )
+                    );
                 } else {
                     messageBoxContainer.append(sendTempMessageCard(inputValue, tempID));
                 }
@@ -97,10 +608,14 @@ function sendMessage()
                 makeSeen(true);
                 //Update conatcts lists...
                 updateContactItem(getMessengerId());
-                const tempMsgCardElement = messageBoxContainer.find(`.message-card[data-id=${data.tempID}]`);
+                const tempMsgCardElement = messageBoxContainer.find(`.message-card[data-id="${data.tempID}"]`);
 
-                tempMsgCardElement.before(data.message);
-                tempMsgCardElement.remove();
+                if (tempMsgCardElement.length) {
+                    tempMsgCardElement.before(data.message);
+                    tempMsgCardElement.remove();
+                } else {
+                    messageBoxContainer.append(data.message);
+                }
                 initVenobox();
             },
             error: function (xhr, status, error) {
@@ -160,6 +675,8 @@ function deleteMessage(message_id)
 */
 function sendTempMessageCard(message, tempId, attachemnt = false) 
 {
+    const safeMessage = escapeHtml(message);
+
     if (attachemnt) {
         return `
                     <div class="wsus__single_chat_area message-card" data-id="${tempId}">
@@ -170,7 +687,7 @@ function sendTempMessageCard(message, tempId, attachemnt = false)
                                 </div>
                             </div>
                             
-                            ${message.trim().length > 0 ? `<p class="messages">${message}</p>` : ''}
+                            ${safeMessage.trim().length > 0 ? `<p class="messages">${safeMessage}</p>` : ''}
 
                             <span class="clock"><i class="fas fa-clock"></i> sending</span>
                         </div>
@@ -181,7 +698,7 @@ function sendTempMessageCard(message, tempId, attachemnt = false)
         return `
                     <div class="wsus__single_chat_area message-card" data-id="${tempId}">
                         <div class="wsus__single_chat chat_right">
-                            <p class="messages">${message}</p>
+                            <p class="messages">${safeMessage}</p>
                             <span class="clock"><i class="fas fa-clock"></i> sending</span>
                         </div>
                     </div>
@@ -198,32 +715,7 @@ function sendTempMessageCard(message, tempId, attachemnt = false)
 */
 function receiveMessageCard(e) 
 {
-    const attachmentUrl = resolveAssetUrl(e.attachment);
-
-    if (e.attachment) {
-        return `
-                    <div class="wsus__single_chat_area message-card" data-id="${e.id}">
-                        <div class="wsus__single_chat">
-                            <a class="venobox" data-gall="gallery${e.id}" href="${attachmentUrl}">
-                                <img src="${attachmentUrl}" alt="gallery1" class="img-fluid w-100">
-                            </a>
-                            
-                            ${e.body != null && e.body.trim().length > 0 ? `<p class="messages">${e.body}</p>` : ''}
-                        </div>
-                    </div>
-                `;
-
-    } else {
-        return `
-                    <div class="wsus__single_chat_area message-card" data-id="${e.id}">
-                        <div class="wsus__single_chat">
-                            <p class="messages">${e.body}</p>
-                        </div>
-                    </div>
-                `;
-    }
-
-
+    return renderReceivedMessageCard(e);
 }//End Method
 
 /**
@@ -233,8 +725,11 @@ function receiveMessageCard(e)
 */
 function messageFormReset() 
 {
-    $(".attachment-block").addClass("d-none");
-    
+    clearComposerAttachments();
+    clearVoiceRecordingPreview();
+    resetVoiceRecordingState();
+    voiceRecordToggle.removeClass('active');
+    updateComposerVoiceStatus('', false);
     messageForm.trigger("reset");
     var emojiElt = $("#example1").emojioneArea();
     emojiElt.data('emojioneArea').setText('');
@@ -288,7 +783,6 @@ function fetchMessages(id, newFetch = false)
                 if (messagesPage == 1) {
 
                     messageBoxContainer.html(data.messages);
-                    scrolllToBottom(messageBoxContainer);
 
                 } else {
                     const lastMsg = $(messageBoxContainer).find(".message-card").first();
@@ -297,6 +791,11 @@ function fetchMessages(id, newFetch = false)
                     messageBoxContainer.prepend(data.messages);
                     messageBoxContainer.scrollTop(lastMsg.offset().top - curOffset);
 
+                }
+
+                if (messagesPage === 1) {
+                    window.__messengerCallManager?.rehydrateHistoryMessage?.();
+                    scrolllToBottom(messageBoxContainer);
                 }
 
                 //Pagination Lock and Page Increment
@@ -927,9 +1426,13 @@ $(document).ready(function ()
      *  -------------------------------
     */
     $(".attachment-input").change(function () {
-        imagePreview(this, '.attachment-preview');
-        $(".attachment-block").removeClass('d-none');
+        renderAttachmentPreview();
 
+    });
+
+    voiceRecordToggle.on('click', function (e) {
+        e.preventDefault();
+        startVoiceRecording();
     });
 
     /**

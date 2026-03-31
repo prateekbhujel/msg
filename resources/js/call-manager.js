@@ -95,6 +95,62 @@ function participantName(participant)
     return participant.name || participant.user_name || 'Unknown user';
 }
 
+function escapeHtml(value)
+{
+    return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+}
+
+function formatTimestampLabel(timestamp)
+{
+    if (!timestamp) {
+        return 'Just now';
+    }
+
+    const time = new Date(timestamp);
+
+    if (Number.isNaN(time.getTime())) {
+        return 'Just now';
+    }
+
+    const diffSeconds = Math.max(0, Math.floor((Date.now() - time.getTime()) / 1000));
+
+    if (diffSeconds <= 60) {
+        return diffSeconds <= 1 ? 'Just now' : `${diffSeconds}s ago`;
+    }
+
+    const diffMinutes = Math.round(diffSeconds / 60);
+
+    if (diffMinutes <= 60) {
+        return `${diffMinutes}m ago`;
+    }
+
+    const diffHours = Math.round(diffSeconds / 3600);
+
+    if (diffHours <= 24) {
+        return `${diffHours}h ago`;
+    }
+
+    return time.toLocaleDateString(undefined, {
+        day: 'numeric',
+        month: 'short',
+        year: '2-digit',
+    });
+}
+
+function formatCallStatusLabel(status)
+{
+    if (!status) {
+        return 'Ended';
+    }
+
+    return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
 function getSelectedConversationId()
 {
     const metaId = Number($('meta[name=id]').attr('content') || 0);
@@ -122,6 +178,7 @@ class MessengerCallManager
         this.$participantAvatar = this.$modal.find('.call-participant-avatar');
         this.$participantName = this.$modal.find('.call-participant-name');
         this.$mediaLabel = this.$modal.find('.call-media-label');
+        this.$duration = this.$modal.find('.call-duration');
         this.$remoteVideo = this.$modal.find('.call-remote-video');
         this.$localVideo = this.$modal.find('.call-local-video');
         this.$incomingActions = this.$modal.find('.incoming-call-actions');
@@ -141,6 +198,9 @@ class MessengerCallManager
         this.pendingCandidates = [];
         this.negotiationStarted = false;
         this.ringtoneAudio = null;
+        this.callTimer = null;
+        this.callStartedAt = null;
+        this.latestHistoryMessage = null;
         this.initialized = false;
     }
 
@@ -257,12 +317,162 @@ class MessengerCallManager
         this.$hangupButton.text('Hang up');
         this.$participantName.text('Ready to connect');
         this.$mediaLabel.text('Video call');
+        this.$duration.text('00:00');
         this.$placeholder.removeClass('d-none');
         this.$participantAvatar.css('background-image', `url("${resolveAssetUrl(this.assetUrl, 'default/avatar.png')}")`);
         this.$remoteVideo[0].srcObject = null;
         this.$localVideo[0].srcObject = null;
         this.$localVideo.addClass('d-none');
         this.$remoteVideo.css({ opacity: 1, pointerEvents: 'auto' });
+    }
+
+    formatDuration(seconds)
+    {
+        const totalSeconds = Math.max(0, Number(seconds || 0));
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const remainingSeconds = totalSeconds % 60;
+
+        if (hours > 0) {
+            return [hours, minutes, remainingSeconds].map((part) => String(part).padStart(2, '0')).join(':');
+        }
+
+        return [minutes, remainingSeconds].map((part) => String(part).padStart(2, '0')).join(':');
+    }
+
+    startCallDurationTimer(startedAt = null)
+    {
+        this.stopCallDurationTimer();
+
+        const parsedStart = startedAt ? new Date(startedAt) : new Date();
+        this.callStartedAt = Number.isNaN(parsedStart.getTime()) ? Date.now() : parsedStart.getTime();
+
+        const tick = () => {
+            const elapsedSeconds = Math.max(0, Math.floor((Date.now() - this.callStartedAt) / 1000));
+            this.$duration.text(this.formatDuration(elapsedSeconds));
+        };
+
+        tick();
+        this.callTimer = window.setInterval(tick, 1000);
+    }
+
+    stopCallDurationTimer()
+    {
+        if (this.callTimer) {
+            window.clearInterval(this.callTimer);
+            this.callTimer = null;
+        }
+
+        this.callStartedAt = null;
+        this.$duration.text('00:00');
+    }
+
+    getConversationPartnerId(session = this.session, historyMessage = null)
+    {
+        const callerId = Number(session?.caller?.id || session?.caller_id || historyMessage?.from_id || 0);
+        const calleeId = Number(session?.callee?.id || session?.callee_id || historyMessage?.to_id || 0);
+
+        if (!callerId || !calleeId) {
+            return Number(historyMessage?.from_id || 0) === this.authId
+                ? Number(historyMessage?.to_id || 0)
+                : Number(historyMessage?.from_id || 0);
+        }
+
+        return callerId === this.authId ? calleeId : callerId;
+    }
+
+    syncHistoryMessage(historyMessage, historyMessageHtml, session = this.session)
+    {
+        if (!historyMessage || !historyMessageHtml) {
+            return;
+        }
+
+        const partnerId = this.getConversationPartnerId(session, historyMessage);
+
+        if (!partnerId || Number(getSelectedConversationId()) !== Number(partnerId)) {
+            return;
+        }
+
+        const $chatBody = $('.wsus__chat_area_body');
+
+        if (!$chatBody.length) {
+            return;
+        }
+
+        const messageSelector = `.message-card[data-id="${historyMessage.id}"]`;
+        const renderedHistoryMessage = this.renderHistoryMessageCard(historyMessage) || historyMessageHtml;
+        const $replacement = $(renderedHistoryMessage);
+
+        this.latestHistoryMessage = {
+            historyMessage: { ...historyMessage },
+            historyMessageHtml: renderedHistoryMessage,
+            session,
+        };
+
+        $chatBody.find('.no_messages').addClass('d-none');
+
+        if ($chatBody.find(messageSelector).length) {
+            $chatBody.find(messageSelector).replaceWith($replacement);
+        } else {
+            $chatBody.append($replacement);
+            $chatBody.stop().animate({ scrollTop: $chatBody[0].scrollHeight });
+        }
+    }
+
+    renderHistoryMessageCard(historyMessage)
+    {
+        if (!historyMessage || (historyMessage.message_type || 'text') !== 'call') {
+            return '';
+        }
+
+        const isMine = Number(historyMessage.from_id || 0) === this.authId;
+        const callType = historyMessage?.meta?.call_type || 'video';
+        const status = historyMessage?.meta?.status || 'ended';
+        const duration = this.formatDuration(historyMessage?.meta?.duration_seconds || 0);
+        const callIcon = callType === 'audio' ? 'fas fa-phone' : 'fas fa-video';
+        const badgeClass = status === 'active'
+            ? 'bg-info text-dark'
+            : status === 'declined'
+                ? 'bg-danger text-white'
+                : status === 'ringing'
+                    ? 'bg-warning text-dark'
+                    : 'bg-success text-white';
+        const body = escapeHtml(historyMessage.body || `${callType.charAt(0).toUpperCase()}${callType.slice(1)} call`);
+        const messageTime = formatTimestampLabel(historyMessage.created_at);
+
+        return `
+            <div class="wsus__single_chat_area message-card" data-id="${historyMessage.id}" data-message-type="call">
+                <div class="wsus__single_chat ${isMine ? 'chat_right' : ''}">
+                    <div class="call_history_card rounded-4 p-3 border border-2 ${badgeClass}">
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="flex-shrink-0 rounded-circle bg-white text-dark d-flex align-items-center justify-content-center" style="width: 54px; height: 54px;">
+                                <i class="${callIcon} fs-5"></i>
+                            </div>
+                            <div class="flex-grow-1">
+                                <div class="fw-semibold mb-1">${body}</div>
+                                <div class="small">
+                                    <span>${formatCallStatusLabel(status)}</span>
+                                    <span class="mx-1">•</span>
+                                    <span>${duration}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="time">${messageTime} · ${duration}</span>
+                    ${isMine ? `<a class="action dlt-message" href="javascript:void(0)" data-msgid="${historyMessage.id}"><i class="fas fa-trash"></i></a>` : ''}
+                </div>
+            </div>
+        `;
+    }
+
+    rehydrateHistoryMessage()
+    {
+        if (!this.latestHistoryMessage) {
+            return;
+        }
+
+        const { historyMessage, historyMessageHtml, session } = this.latestHistoryMessage;
+        this.syncHistoryMessage(historyMessage, historyMessageHtml, session);
     }
 
     updateStatus(message, tone = 'muted')
@@ -432,10 +642,10 @@ class MessengerCallManager
             );
             this.updateHangupLabel(this.session.status === 'active' ? 'Hang up' : 'Cancel call');
             this.toggleIncomingActions(false);
+            this.syncHistoryMessage(response.history_message, response.history_message_html, this.session);
             if (this.session.status === 'active') {
                 this.stopRingtone();
-            } else {
-                this.playRingtone();
+                this.startCallDurationTimer(response.history_message?.meta?.started_at || this.session.accepted_at);
             }
             this.showModal();
             this.subscribeToSessionChannel(this.session.uuid);
@@ -476,6 +686,7 @@ class MessengerCallManager
         this.updateStatus('Incoming call', 'warning');
         this.updateHangupLabel('Decline');
         this.toggleIncomingActions(true);
+        this.syncHistoryMessage(event.history_message, event.history_message_html, session);
         this.playRingtone();
         this.subscribeToSessionChannel(session.uuid);
         this.showModal();
@@ -527,7 +738,9 @@ class MessengerCallManager
             this.setCallMode(this.callType);
             this.toggleIncomingActions(false);
             this.updateHangupLabel('Hang up');
-            this.updateStatus('Waiting for the other side...', 'info');
+            this.updateStatus('Connected', 'success');
+            this.syncHistoryMessage(response.history_message, response.history_message_html, this.session);
+            this.startCallDurationTimer(response.history_message?.meta?.started_at || this.session.accepted_at);
         } catch (error) {
             this.notifyAjaxError(error, 'Unable to accept the call.');
             await this.endCurrentCall('decline', true);
@@ -551,13 +764,15 @@ class MessengerCallManager
             : route('messenger.calls.hangup', { session: this.session.uuid });
 
         try {
-            await $.ajax({
+            const response = await $.ajax({
                 method,
                 url,
                 data: {
                     _token: this.csrfToken,
                 },
             });
+
+            this.syncHistoryMessage(response?.history_message, response?.history_message_html, this.session);
         } catch (error) {
             if (!silent) {
                 this.notifyAjaxError(error, 'Unable to finish the call.');
@@ -582,6 +797,7 @@ class MessengerCallManager
         }
 
         this.session = session;
+        this.syncHistoryMessage(event.history_message, event.history_message_html, session);
 
         switch (event.type) {
         case 'accepted':
@@ -589,6 +805,7 @@ class MessengerCallManager
             if (this.role === 'caller' && !this.negotiationStarted) {
                 this.$title.text(`Calling ${participantName(this.session.callee)}`);
                 this.updateStatus('Connecting...', 'warning');
+                this.startCallDurationTimer(event.history_message?.meta?.started_at || this.session.accepted_at);
                 await this.startCallerNegotiation();
             }
             break;
@@ -596,12 +813,14 @@ class MessengerCallManager
             this.stopRingtone();
             notify('info', 'The call was declined.');
             this.updateStatus('Call declined', 'danger');
+            this.stopCallDurationTimer();
             this.cleanup({ leaveSession: true });
             this.hideModal();
             break;
         case 'hangup':
             this.stopRingtone();
             this.updateStatus('Call ended', 'muted');
+            this.stopCallDurationTimer();
             this.cleanup({ leaveSession: true });
             this.hideModal();
             break;
@@ -675,6 +894,9 @@ class MessengerCallManager
             await this.flushPendingCandidates();
             this.stopRingtone();
             this.updateStatus('Connected', 'success');
+            if (!this.callTimer) {
+                this.startCallDurationTimer(this.callStartedAt || this.session?.accepted_at || this.session?.history_message?.meta?.started_at);
+            }
 
             if (this.callType === 'video') {
                 this.$placeholder.addClass('d-none');
@@ -876,6 +1098,7 @@ class MessengerCallManager
         this.stopMediaStream();
         this.closePeerConnection();
         this.stopRingtone();
+        this.stopCallDurationTimer();
 
         if (leaveSession) {
             this.leaveSessionChannel();

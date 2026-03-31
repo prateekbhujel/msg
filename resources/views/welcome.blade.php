@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Msg - Your Lightweight Chat Buddy</title>
-    <link rel="icon" type="image/png" href="{{ asset('public/assets/images/icon.png') }}">
+    <link rel="icon" type="image/png" href="{{ asset('assets/images/icon.png') }}">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css">
     <style>
         body {

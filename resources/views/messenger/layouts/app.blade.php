@@ -8,7 +8,8 @@
         <meta name="id" content="">
         <meta name="csrf_token" content="{{ csrf_token() }}">
         <meta name="auth_id" content="{{ auth()->user()->id }}">
-        <meta name="url" content="{{ public_path() }}">
+        <meta name="asset-url" content="{{ asset('') }}">
+        <meta name="webrtc-ice-servers" content='@json(config("services.webrtc.ice_servers"))'>
 
         
         <title>{{ config('app.name') }}</title>

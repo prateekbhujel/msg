@@ -22,8 +22,8 @@
                 </div>
                 <div class="header_right">
                     <a href="javascript:void(0)" class="favourite"><i class="fas fa-star"></i></a>
-                    {{-- <a href="javascript:void(0)" class="info"><i class="fas fa-phone"></i></a>
-                    <a href="javascript:void(0)" class="info"><i class="fas fa-video"></i></a> --}}
+                    <a href="javascript:void(0)" class="call-action start-call" data-call-type="audio" title="Audio call"><i class="fas fa-phone"></i></a>
+                    <a href="javascript:void(0)" class="call-action start-call" data-call-type="video" title="Video call"><i class="fas fa-video"></i></a>
                     <a href="javascript:void(0)" class="info"><i class="fas fa-info-circle"></i></a>
                 </div>
             </div>
@@ -53,5 +53,7 @@
         @include('messenger.layouts.user-info-sidebar')
 
     </section>
+
+    @include('messenger.layouts.call-modal')
 
 @endsection

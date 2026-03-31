@@ -31,4 +31,16 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    'webrtc' => [
+        'ice_servers' => json_decode(
+            env(
+                'WEBRTC_ICE_SERVERS',
+                '[{"urls":"stun:stun.l.google.com:19302"}]'
+            ),
+            true
+        ) ?: [
+            ['urls' => 'stun:stun.l.google.com:19302'],
+        ],
+    ],
+
 ];

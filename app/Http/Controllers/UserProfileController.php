@@ -77,7 +77,6 @@ class UserProfileController extends Controller
         $user->email = $request->email;
         $user->save();
 
-        notyf()->addSuccess('Updated Successfully.');
         return response()->json(['message' => 'Updated Successfully.'], 200);
         
     } // End Method

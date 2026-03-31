@@ -49,7 +49,7 @@ aria-hidden="true">
 
                 $.ajax({
                     method: 'POST',
-                    url: '{{ route("profile.update") }}',
+                    url: '{{ route("messenger.profile.update") }}',
                     data: formData,
                     processData: false,
                     contentType: false,

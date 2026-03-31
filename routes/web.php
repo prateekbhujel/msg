@@ -3,6 +3,7 @@
 use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\MessengerController;
+use App\Http\Controllers\CallController;
 use App\Http\Controllers\UserProfileController;
 
 /*
@@ -26,7 +27,7 @@ Route::get('/dashboard', function () {
 
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
-    // Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
+    Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
 
@@ -36,7 +37,14 @@ require __DIR__.'/auth.php';
 Route::group(['middleware' => 'auth'], function() {
     Route::get('messenger', [MessengerController::class, 'index'])->name('home');
 
-    Route::post('profile', [UserProfileController::class, 'update'])->name('profile.update');
+    Route::post('messenger/profile', [UserProfileController::class, 'update'])->name('messenger.profile.update');
+    
+    //Call routes
+    Route::post('messenger/calls', [CallController::class, 'store'])->name('messenger.calls.store');
+    Route::post('messenger/calls/{session:uuid}/accept', [CallController::class, 'accept'])->name('messenger.calls.accept');
+    Route::post('messenger/calls/{session:uuid}/decline', [CallController::class, 'decline'])->name('messenger.calls.decline');
+    Route::post('messenger/calls/{session:uuid}/signal', [CallController::class, 'signal'])->name('messenger.calls.signal');
+    Route::delete('messenger/calls/{session:uuid}', [CallController::class, 'hangup'])->name('messenger.calls.hangup');
 
     //User Search Route
     Route::get('messenger/search', [MessengerController::class, 'search'])->name('messenger.search');

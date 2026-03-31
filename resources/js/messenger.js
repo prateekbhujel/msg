@@ -3,6 +3,8 @@
  * | Global Variables |
  *  ------------------
 */
+import { initializeCallManager } from './call-manager';
+
 var temporaryMsgId = 0;
 var activeUsersIds = [];
 
@@ -11,11 +13,24 @@ const messageForm             = $(".message-form"),
       messageBoxContainer     = $(".wsus__chat_area_body"),
       csrf_token              = $("meta[name=csrf_token]").attr("content"),
       auth_id                 = $("meta[name=auth_id]").attr("content"),
-      url                     = $("meta[name=url]").attr("content"),
+      assetUrl                = $("meta[name=asset-url]").attr("content") || `${window.location.origin}/`,
       messengerContactBox     = $(".messenger-contacts");
 
 const getMessengerId          = () => $("meta[name=id]").attr("content");
 const setMessengerId          = (id) => $("meta[name=id]").attr("content", id);
+
+function resolveAssetUrl(path)
+{
+    if (!path) {
+        return "";
+    }
+
+    if (/^(?:https?:)?\/\//i.test(path)) {
+        return path;
+    }
+
+    return new URL(path.replace(/^\/+/, ""), assetUrl).toString();
+}
 
 /**
  *  ---------------------
@@ -183,12 +198,14 @@ function sendTempMessageCard(message, tempId, attachemnt = false)
 */
 function receiveMessageCard(e) 
 {
+    const attachmentUrl = resolveAssetUrl(e.attachment);
+
     if (e.attachment) {
         return `
                     <div class="wsus__single_chat_area message-card" data-id="${e.id}">
                         <div class="wsus__single_chat">
-                            <a class="venobox" data-gall="gallery${e.id}" href="${e.attachment}">
-                                <img src="${e.attachment}" alt="gallery1" class="img-fluid w-100">
+                            <a class="venobox" data-gall="gallery${e.id}" href="${attachmentUrl}">
+                                <img src="${attachmentUrl}" alt="gallery1" class="img-fluid w-100">
                             </a>
                             
                             ${e.body != null && e.body.trim().length > 0 ? `<p class="messages">${e.body}</p>` : ''}
@@ -500,10 +517,10 @@ function Idinfo(id)
             //Fetch Favourites and handles the favorite button
             data.favorite > 0 ? $(".favourite").addClass("active") : $(".favourite").removeClass("active");
 
-            $(".messenger-header").find("img").attr("src", "public/" + data.fetch.avatar);
+            $(".messenger-header").find("img").attr("src", resolveAssetUrl(data.fetch.avatar));
             $(".messenger-header").find("h4").text(data.fetch.name);
 
-            $(".messenger-info-view .user_photo").find("img").attr("src", "public/" + data.fetch.avatar);
+            $(".messenger-info-view .user_photo").find("img").attr("src", resolveAssetUrl(data.fetch.avatar));
             $(".messenger-info-view").find(".user_name").text(data.fetch.name);
             $(".messenger-info-view").find(".user_unique_name").text(data.fetch.user_name);
             NProgress.done();
@@ -546,8 +563,8 @@ function updateContactItem(user_id)
             url : route('messenger.update-contact-item'),
             data: { user_id: user_id },
             success: function(data){
-                if(messageBoxContainer.find('.no_contact')){
-                    messengerContactBox.find('p').remove();
+                if (messageBoxContainer.find('.no_contact').length) {
+                    messengerContactBox.find('.no_contact').remove();
                 }
                 messengerContactBox.find(`.messenger-list-item[data-id="${user_id}"]`).remove();
                 messengerContactBox.prepend(data.contact_item);
@@ -656,8 +673,7 @@ function initVenobox()
 */
 function playNotficationSound()
 {
-    const sound = new Audio(`public/default/message-sound.mp3`);
-    console.log(sound);
+    const sound = new Audio(resolveAssetUrl('default/message-sound.mp3'));
     sound.play();
 }
 
@@ -813,6 +829,7 @@ function removeUserId(id)
 $(document).ready(function () 
 {   
     getContacts();;
+    initializeCallManager();
 
     /**
      *  -------------------------------------------
@@ -1003,7 +1020,3 @@ $(document).ready(function ()
     });
 
 });//End Method
-
-
-
-

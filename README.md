@@ -120,10 +120,6 @@ We welcome contributions to improve Msg. Please follow these steps to contribute
 - [Bootstrap](https://getbootstrap.com/)
 - [jQuery](https://jquery.com/)
 
-## Contact
-
-For questions, issues, or suggestions, please open an issue on the [GitHub repository](https://github.com/prateekbhujel/msg/issues).
-
 
 ## Important
- -- *Note* this app is desgined to run without an php artisan serve. So if you happen to use with php artisan serve, you will have to use the url provided by the server. i.e. Remove 'Public'--from related image and assets and also on user table migration remove public/ from the avatar field.
+ -- *Note* this app is designed to run without a php artisan serve. So if you happen to use with php artisan serve, you will have to use the url provided by the server. i.e. Remove 'Public'--from related image and assets and also on user table migration remove public/ from the avatar field.

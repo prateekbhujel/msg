@@ -88,9 +88,11 @@ button {
 .wsus__chat_app {
     width: 100%;
     height: 100vh;
+    min-height: 100dvh;
     display: flex;
     flex-wrap: wrap;
     position: relative;
+    overflow: hidden;
 }
 
 .wsus__user_list {
@@ -612,6 +614,9 @@ button {
     border-right: 1px solid #ddd;
     position: relative;
     background: var(--colorLightBg);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 .wsus__chat_area .wsus__message_paceholder {
@@ -713,9 +718,12 @@ button {
 
 .wsus__chat_area_body {
     padding: 20px;
-    height: 750px;
+    flex: 1 1 auto;
+    min-height: 0;
+    height: auto;
     overflow: hidden;
-    overflow-y: scroll;
+    overflow-y: auto;
+    scroll-padding-bottom: 24px;
 }
 
 .wsus__chat_area_body::-webkit-scrollbar {
@@ -869,12 +877,11 @@ button {
 }
 
 .wsus__chat_area_footer {
-    position: absolute;
-    bottom: 0;
-    left: 0;
     width: 100%;
     padding: 20px;
     z-index: 2;
+    position: relative;
+    flex-shrink: 0;
 }
 
 .wsus__chat_area_footer .footer_message {

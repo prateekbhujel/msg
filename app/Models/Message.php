@@ -103,7 +103,7 @@ class Message extends Model
     public function canBeDeletedBy(int $userId): bool
     {
         if ($this->isCallMessage()) {
-            return $this->isParticipant($userId);
+            return false;
         }
 
         return (int) $this->from_id === $userId;

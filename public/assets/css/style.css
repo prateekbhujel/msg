@@ -1087,6 +1087,11 @@ button {
     box-shadow: none;
 }
 
+.voice-note-card--recording {
+    border-color: rgba(239, 68, 68, 0.20);
+    background: linear-gradient(180deg, rgba(255, 247, 247, 1) 0%, rgba(255, 255, 255, 1) 100%);
+}
+
 .voice-note-card--message .voice-note-subtitle {
     color: #6b7280;
 }
@@ -1137,6 +1142,16 @@ button {
     min-width: 72px;
 }
 
+.voice-note-wave--compact {
+    min-width: 58px;
+    height: 20px;
+}
+
+.voice-note-wave--recording span {
+    animation-duration: .7s;
+    background: linear-gradient(180deg, #f97316 0%, #ef4444 100%);
+}
+
 .voice-note-wave span {
     width: 3px;
     border-radius: 999px;
@@ -1172,6 +1187,77 @@ button {
 .voice-note-card audio {
     width: 100%;
     display: block;
+}
+
+.voice-audio-player {
+    margin-top: 10px;
+    background: rgba(33, 128, 243, 0.06);
+    border: 1px solid rgba(33, 128, 243, 0.10);
+    border-radius: 18px;
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.voice-audio-player__toggle {
+    width: 40px;
+    height: 40px;
+    border: none;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    background: linear-gradient(135deg, var(--colorPrimary) 0%, #4f46e5 100%);
+    box-shadow: 0 8px 18px rgba(33, 128, 243, 0.18);
+    flex-shrink: 0;
+    transition: transform .2s ease, background .2s ease, box-shadow .2s ease;
+}
+
+.voice-audio-player__toggle:hover {
+    transform: translateY(-1px);
+    background: #111827;
+}
+
+.voice-audio-player.is-playing .voice-audio-player__toggle {
+    background: #111827;
+}
+
+.voice-audio-player__timeline {
+    flex: 1;
+    min-width: 0;
+}
+
+.voice-audio-player__times {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 11px;
+    color: #6b7280;
+    margin-bottom: 6px;
+}
+
+.voice-audio-player__progress {
+    position: relative;
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.22);
+    overflow: hidden;
+}
+
+.voice-audio-player__progress-fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 0%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--colorPrimary) 0%, #22c55e 100%);
+    transition: width .12s linear;
+}
+
+.voice-audio-player__audio {
+    display: none;
 }
 
 .wsus__chat_area_footer .footer_message .composer-actions {

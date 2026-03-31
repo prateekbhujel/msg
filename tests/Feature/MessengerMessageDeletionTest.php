@@ -3,7 +3,7 @@
 use App\Models\Message;
 use App\Models\User;
 
-it('allows either participant to delete a call log message', function () {
+it('prevents deleting a call log message', function () {
     $caller = User::factory()->create();
     $callee = User::factory()->create();
 
@@ -20,14 +20,11 @@ it('allows either participant to delete a call log message', function () {
         'seen' => false,
     ]);
 
-    $response = $this->actingAs($callee)->deleteJson(route('messenger.delete-message'), [
+    $this->actingAs($callee)->deleteJson(route('messenger.delete-message'), [
         'message_id' => $callMessage->id,
-    ]);
+    ])->assertForbidden();
 
-    $response->assertOk()
-        ->assertJsonPath('id', $callMessage->id);
-
-    $this->assertDatabaseMissing('messages', [
+    $this->assertDatabaseHas('messages', [
         'id' => $callMessage->id,
     ]);
 });

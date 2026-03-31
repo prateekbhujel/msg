@@ -206,6 +206,136 @@ function renderVoiceWaveBars()
     return '<span></span><span></span><span></span><span></span><span></span>';
 }
 
+function renderVoicePlayerMarkup({
+    source,
+    mime = 'audio/webm',
+    title = 'Voice note',
+    subtitle = 'Tap play to listen',
+    iconClass = 'fas fa-microphone',
+    sizeText = '',
+    variantClass = '',
+} = {})
+{
+    const subtitleParts = [subtitle, sizeText].filter(Boolean);
+    const subtitleLabel = escapeHtml(subtitleParts.join(' · '));
+    const waveClass = `voice-note-wave${variantClass.includes('recording') ? ' voice-note-wave--recording' : ''}`;
+
+    return `
+        <div class="voice-note-card ${variantClass}" data-voice-player>
+            <div class="voice-note-icon">
+                <i class="${iconClass}"></i>
+            </div>
+            <div class="flex-grow-1 min-w-0">
+                <div class="voice-note-head">
+                    <div class="min-w-0">
+                        <div class="voice-note-title">${escapeHtml(title)}</div>
+                        <div class="voice-note-subtitle">${subtitleLabel}</div>
+                    </div>
+                    <div class="${waveClass} voice-note-wave--compact" aria-hidden="true">
+                        ${renderVoiceWaveBars()}
+                    </div>
+                </div>
+                <div class="voice-audio-player">
+                    <button type="button" class="voice-audio-player__toggle" aria-label="Play voice note">
+                        <i class="fas fa-play"></i>
+                    </button>
+                    <div class="voice-audio-player__timeline">
+                        <div class="voice-audio-player__times">
+                            <span class="voice-audio-player__current">0:00</span>
+                            <span class="voice-audio-player__duration">0:00</span>
+                        </div>
+                        <div class="voice-audio-player__progress">
+                            <span class="voice-audio-player__progress-fill"></span>
+                        </div>
+                    </div>
+                    <audio class="voice-audio-player__audio" preload="none">
+                        <source src="${escapeHtml(source)}" type="${escapeHtml(mime)}">
+                    </audio>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function initializeVoicePlayers(scope = document)
+{
+    $(scope).find('[data-voice-player]').each(function () {
+        const $player = $(this);
+
+        if ($player.data('voicePlayerBound')) {
+            return;
+        }
+
+        const audio = $player.find('.voice-audio-player__audio').get(0);
+        const toggle = $player.find('.voice-audio-player__toggle');
+        const icon = toggle.find('i');
+        const currentTime = $player.find('.voice-audio-player__current');
+        const durationTime = $player.find('.voice-audio-player__duration');
+        const progressFill = $player.find('.voice-audio-player__progress-fill');
+
+        if (!audio || !toggle.length) {
+            return;
+        }
+
+        const sync = () => {
+            const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 0;
+            const current = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+            const ratio = duration > 0 ? Math.min(100, Math.max(0, (current / duration) * 100)) : 0;
+
+            currentTime.text(formatDurationSeconds(current));
+            durationTime.text(duration > 0 ? formatDurationSeconds(duration) : '0:00');
+            progressFill.css('width', `${ratio}%`);
+        };
+
+        const setPlayingState = (playing) => {
+            $player.toggleClass('is-playing', playing);
+            icon.toggleClass('fa-play', !playing);
+            icon.toggleClass('fa-pause', playing);
+        };
+
+        const resetPlayer = () => {
+            audio.currentTime = 0;
+            progressFill.css('width', '0%');
+            setPlayingState(false);
+            sync();
+        };
+
+        toggle.on('click', async function () {
+            if (audio.paused) {
+                $('[data-voice-player]').not($player).each(function () {
+                    const otherAudio = $(this).find('.voice-audio-player__audio').get(0);
+                    if (otherAudio && !otherAudio.paused) {
+                        otherAudio.pause();
+                    }
+                });
+
+                try {
+                    await audio.play();
+                } catch (error) {
+                    // Ignore autoplay blocking and keep the UI stable.
+                }
+            } else {
+                audio.pause();
+            }
+        });
+
+        audio.addEventListener('loadedmetadata', sync);
+        audio.addEventListener('timeupdate', sync);
+        audio.addEventListener('play', function () {
+            setPlayingState(true);
+            sync();
+        });
+        audio.addEventListener('pause', function () {
+            setPlayingState(false);
+            sync();
+        });
+        audio.addEventListener('ended', resetPlayer);
+
+        sync();
+        $player.data('voicePlayerBound', true);
+    });
+}
+
 function formatAttachmentTypeLabel(type)
 {
     switch (type) {
@@ -480,28 +610,17 @@ async function startVoiceRecording()
                 }
 
                 voiceRecordingUrl = URL.createObjectURL(voiceRecordingBlob);
-                voicePreview.html(`
-                    <div class="voice-note-card">
-                        <div class="voice-note-icon">
-                            <i class="fas fa-microphone"></i>
-                        </div>
-                        <div class="flex-grow-1 min-w-0">
-                            <div class="voice-note-head">
-                                <div class="min-w-0">
-                                    <div class="voice-note-title">Voice note ready</div>
-                                    <div class="voice-note-subtitle">${formatFileSize(voiceRecordingBlob.size) || 'Tap play to review'}</div>
-                                </div>
-                                <div class="voice-note-wave" aria-hidden="true">
-                                    ${renderVoiceWaveBars()}
-                                </div>
-                            </div>
-                            <audio controls preload="none" class="w-100 mt-2">
-                                <source src="${voiceRecordingUrl}" type="${mimeType}">
-                            </audio>
-                        </div>
-                    </div>
-                `).removeClass('d-none');
+                voicePreview.html(renderVoicePlayerMarkup({
+                    source: voiceRecordingUrl,
+                    mime: mimeType,
+                    title: 'Voice note ready',
+                    subtitle: 'Tap play to review',
+                    iconClass: 'fas fa-microphone',
+                    sizeText: formatFileSize(voiceRecordingBlob.size) || '',
+                    variantClass: 'voice-note-card--message voice-note-card--recording',
+                })).removeClass('d-none');
                 toggleComposerState('has-voice-preview', true);
+                initializeVoicePlayers(voicePreview[0]);
             } else {
                 toggleComposerState('has-voice-preview', false);
             }
@@ -554,17 +673,15 @@ function renderMessageMedia(attachments, messageType = 'text', messageId = null)
                 }
 
                 if (attachmentType === 'audio') {
-                    return `
-                        <div class="rounded-4 bg-light p-3">
-                            <div class="d-flex align-items-center gap-2 mb-2">
-                                <i class="fas fa-music text-primary"></i>
-                                <span class="small fw-semibold">${truncateText(attachmentName, 24)}</span>
-                            </div>
-                            <audio controls preload="none" class="w-100">
-                                <source src="${attachmentUrl}" type="${attachment.mime || 'audio/mpeg'}">
-                            </audio>
-                        </div>
-                    `;
+                    return renderVoicePlayerMarkup({
+                        source: attachmentUrl,
+                        mime: attachment.mime || 'audio/mpeg',
+                        title: truncateText(attachmentName, 24),
+                        subtitle: 'Tap play to listen',
+                        iconClass: 'fas fa-music',
+                        sizeText: attachment.size ? formatFileSize(attachment.size) : '',
+                        variantClass: 'voice-note-card--message',
+                    });
                 }
 
                 if (attachmentType === 'video') {
@@ -593,7 +710,7 @@ function renderReceivedMessageCard(e)
     const messageType = e.message_type || 'text';
     const attachments = normalizeAttachments(e.attachments || e.attachment, messageType);
     const isMine = Number(e.from_id) === Number(auth_id);
-    const canDelete = isMine || messageType === 'call';
+    const canDelete = isMine && messageType !== 'call';
     const bodyText = typeof e.body === 'string' ? e.body.trim() : (e.body || '');
     const body = escapeHtml(bodyText);
     const messageTime = formatTimestampLabel(e.created_at);
@@ -647,25 +764,15 @@ function renderReceivedMessageCard(e)
         return `
             <div class="wsus__single_chat_area message-card" data-id="${e.id}" data-message-type="voice">
                 <div class="wsus__single_chat ${isMine ? 'chat_right' : ''}">
-                    <div class="voice-note-card voice-note-card--message">
-                        <div class="voice-note-icon">
-                            <i class="fas fa-microphone"></i>
-                        </div>
-                        <div class="flex-grow-1 min-w-0">
-                            <div class="voice-note-head">
-                                <div class="min-w-0">
-                                    <div class="voice-note-title">${body || 'Voice note'}</div>
-                                    <div class="voice-note-subtitle">Tap play to listen${voiceSize ? ` · ${voiceSize}` : ''}</div>
-                                </div>
-                                <div class="voice-note-wave" aria-hidden="true">
-                                    ${renderVoiceWaveBars()}
-                                </div>
-                            </div>
-                            <audio controls preload="none" class="w-100 mt-2">
-                                <source src="${voiceUrl}" type="${voiceMime}">
-                            </audio>
-                        </div>
-                    </div>
+                    ${renderVoicePlayerMarkup({
+                        source: voiceUrl,
+                        mime: voiceMime,
+                        title: body || 'Voice note',
+                        subtitle: 'Tap play to listen',
+                        iconClass: 'fas fa-microphone',
+                        sizeText: voiceSize || '',
+                        variantClass: 'voice-note-card--message',
+                    })}
                     <span class="time">${messageTime}</span>
                     ${canDelete ? `<a class="action dlt-message" href="javascript:void(0)" data-msgid="${e.id}"><i class="fas fa-trash"></i></a>` : ''}
                 </div>
@@ -793,6 +900,7 @@ async function sendMessage()
                     messageBoxContainer.append(data.message);
                 }
                 initVenobox();
+                initializeVoicePlayers(messageBoxContainer[0]);
             },
             error: function (xhr, status, error) {
                 // console.log(error);
@@ -961,12 +1069,14 @@ function fetchMessages(id, newFetch = false)
                 if (messagesPage == 1) {
 
                     messageBoxContainer.html(data.messages);
+                    initializeVoicePlayers(messageBoxContainer[0]);
 
                 } else {
                     const lastMsg = $(messageBoxContainer).find(".message-card").first();
                     const curOffset = lastMsg.offset().top - messageBoxContainer.scrollTop();
 
                     messageBoxContainer.prepend(data.messages);
+                    initializeVoicePlayers(messageBoxContainer[0]);
                     messageBoxContainer.scrollTop(lastMsg.offset().top - curOffset);
 
                 }
@@ -1190,6 +1300,7 @@ function Idinfo(id)
             }
 
             initVenobox();
+            initializeVoicePlayers(messageBoxContainer[0]);
 
             //Fetch Favourites and handles the favorite button
             data.favorite > 0 ? $(".favourite").addClass("active") : $(".favourite").removeClass("active");

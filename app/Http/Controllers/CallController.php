@@ -15,22 +15,24 @@ class CallController extends Controller
 {
     public function store(Request $request): JsonResponse
     {
+        $authId = $this->authUserId();
+
         $data = $request->validate([
             'callee_id' => ['required', 'integer', 'exists:users,id'],
             'call_type' => ['required', 'in:audio,video'],
         ]);
 
-        abort_if((int) $data['callee_id'] === Auth::id(), 422, 'You cannot call yourself.');
+        abort_if((int) $data['callee_id'] === $authId, 422, 'You cannot call yourself.');
 
         $existingSession = CallSession::query()
             ->whereIn('status', ['ringing', 'active'])
             ->where(function ($query) use ($data) {
                 $query->where(function ($query) use ($data) {
-                    $query->where('caller_id', Auth::id())
+                    $query->where('caller_id', $this->authUserId())
                         ->where('callee_id', $data['callee_id']);
                 })->orWhere(function ($query) use ($data) {
                     $query->where('caller_id', $data['callee_id'])
-                        ->where('callee_id', Auth::id());
+                        ->where('callee_id', $this->authUserId());
                 });
             })
             ->latest('id')
@@ -44,7 +46,7 @@ class CallController extends Controller
 
         $session = CallSession::create([
             'uuid' => (string) Str::uuid(),
-            'caller_id' => Auth::id(),
+            'caller_id' => $authId,
             'callee_id' => $data['callee_id'],
             'call_type' => $data['call_type'],
             'status' => 'ringing',
@@ -59,8 +61,10 @@ class CallController extends Controller
 
     public function accept(CallSession $session): JsonResponse
     {
+        $authId = $this->authUserId();
+
         $this->authorizeParticipant($session);
-        abort_unless(Auth::id() === $session->callee_id, 403);
+        abort_unless($authId === (int) $session->callee_id, 403);
         if ($session->status === 'active') {
             return response()->json([
                 'session' => $this->formatSession($session->fresh(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name'])),
@@ -76,7 +80,7 @@ class CallController extends Controller
 
         CallSignal::dispatch($session->fresh(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name']), 'accepted', [
             'accepted_at' => now()->toIso8601String(),
-        ], Auth::id());
+        ], $authId);
 
         return response()->json([
             'session' => $this->formatSession($session->fresh(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name'])),
@@ -85,8 +89,10 @@ class CallController extends Controller
 
     public function decline(CallSession $session): JsonResponse
     {
+        $authId = $this->authUserId();
+
         $this->authorizeParticipant($session);
-        abort_unless(Auth::id() === $session->callee_id, 403);
+        abort_unless($authId === (int) $session->callee_id, 403);
         if ($session->status === 'declined') {
             return response()->json([
                 'session' => $this->formatSession($session->fresh(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name'])),
@@ -102,7 +108,7 @@ class CallController extends Controller
 
         CallSignal::dispatch($session->fresh(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name']), 'declined', [
             'reason' => 'declined',
-        ], Auth::id());
+        ], $authId);
 
         return response()->json([
             'session' => $this->formatSession($session->fresh(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name'])),
@@ -111,6 +117,8 @@ class CallController extends Controller
 
     public function signal(Request $request, CallSession $session): JsonResponse
     {
+        $authId = $this->authUserId();
+
         $this->authorizeParticipant($session);
         abort_unless($session->status === 'active', 409, 'Call is not active.');
 
@@ -128,7 +136,7 @@ class CallController extends Controller
                 'signal_type' => $data['signal_type'],
                 'signal_data' => $payload,
             ],
-            Auth::id()
+            $authId
         );
 
         return response()->json([
@@ -138,6 +146,8 @@ class CallController extends Controller
 
     public function hangup(CallSession $session): JsonResponse
     {
+        $authId = $this->authUserId();
+
         $this->authorizeParticipant($session);
 
         if ($session->status === 'ended') {
@@ -157,7 +167,7 @@ class CallController extends Controller
             [
                 'reason' => 'hangup',
             ],
-            Auth::id()
+            $authId
         );
 
         return response()->json([
@@ -167,8 +177,10 @@ class CallController extends Controller
 
     protected function authorizeParticipant(CallSession $session): void
     {
+        $authId = $this->authUserId();
+
         abort_unless(
-            Auth::id() === $session->caller_id || Auth::id() === $session->callee_id,
+            $authId === (int) $session->caller_id || $authId === (int) $session->callee_id,
             403
         );
     }
@@ -180,17 +192,22 @@ class CallController extends Controller
             'call_type' => $session->call_type,
             'status' => $session->status,
             'caller' => [
-                'id' => $session->caller?->id,
+                'id' => $session->caller?->id ? (int) $session->caller->id : null,
                 'name' => $session->caller?->name,
                 'avatar' => $session->caller?->avatar,
                 'user_name' => $session->caller?->user_name,
             ],
             'callee' => [
-                'id' => $session->callee?->id,
+                'id' => $session->callee?->id ? (int) $session->callee->id : null,
                 'name' => $session->callee?->name,
                 'avatar' => $session->callee?->avatar,
                 'user_name' => $session->callee?->user_name,
             ],
         ];
+    }
+
+    protected function authUserId(): int
+    {
+        return (int) Auth::id();
     }
 }

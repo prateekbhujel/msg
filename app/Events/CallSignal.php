@@ -35,6 +35,10 @@ class CallSignal implements ShouldBroadcastNow
 
     public function broadcastWith(): array
     {
+        $callerId = (int) $this->session->caller_id;
+        $calleeId = (int) $this->session->callee_id;
+        $fromId = (int) ($this->fromId ?? auth()->id());
+
         return [
             'type' => $this->type,
             'session' => [
@@ -42,23 +46,21 @@ class CallSignal implements ShouldBroadcastNow
                 'call_type' => $this->session->call_type,
                 'status' => $this->session->status,
                 'caller' => [
-                    'id' => $this->session->caller?->id,
+                    'id' => $this->session->caller?->id ? (int) $this->session->caller->id : null,
                     'name' => $this->session->caller?->name,
                     'avatar' => $this->session->caller?->avatar,
                     'user_name' => $this->session->caller?->user_name,
                 ],
                 'callee' => [
-                    'id' => $this->session->callee?->id,
+                    'id' => $this->session->callee?->id ? (int) $this->session->callee->id : null,
                     'name' => $this->session->callee?->name,
                     'avatar' => $this->session->callee?->avatar,
                     'user_name' => $this->session->callee?->user_name,
                 ],
             ],
             'payload' => $this->payload,
-            'from_id' => $this->fromId ?? auth()->id(),
-            'to_id' => $this->session->caller_id === ($this->fromId ?? auth()->id())
-                ? $this->session->callee_id
-                : $this->session->caller_id,
+            'from_id' => $fromId,
+            'to_id' => $callerId === $fromId ? $calleeId : $callerId,
         ];
     }
 }

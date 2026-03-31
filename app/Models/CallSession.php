@@ -21,6 +21,8 @@ class CallSession extends Model
     ];
 
     protected $casts = [
+        'caller_id' => 'integer',
+        'callee_id' => 'integer',
         'accepted_at' => 'datetime',
         'ended_at' => 'datetime',
     ];

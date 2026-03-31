@@ -140,6 +140,7 @@ class MessengerCallManager
         this.sessionChannelName = null;
         this.pendingCandidates = [];
         this.negotiationStarted = false;
+        this.ringtoneAudio = null;
         this.initialized = false;
     }
 
@@ -313,6 +314,54 @@ class MessengerCallManager
         }
     }
 
+    prepareRingtone()
+    {
+        if (this.ringtoneAudio) {
+            return this.ringtoneAudio;
+        }
+
+        this.ringtoneAudio = new Audio(resolveAssetUrl(this.assetUrl, 'default/message-sound.mp3'));
+        this.ringtoneAudio.preload = 'auto';
+        this.ringtoneAudio.loop = true;
+        this.ringtoneAudio.volume = 0.45;
+
+        return this.ringtoneAudio;
+    }
+
+    playRingtone()
+    {
+        const audio = this.prepareRingtone();
+
+        if (!audio) {
+            return;
+        }
+
+        audio.currentTime = 0;
+
+        const playPromise = audio.play();
+
+        if (playPromise && typeof playPromise.catch === 'function') {
+            playPromise.catch(() => {});
+        }
+    }
+
+    stopRingtone()
+    {
+        if (!this.ringtoneAudio) {
+            return;
+        }
+
+        this.ringtoneAudio.pause();
+        this.ringtoneAudio.currentTime = 0;
+    }
+
+    blurFocusedElement()
+    {
+        if (document.activeElement && typeof document.activeElement.blur === 'function') {
+            document.activeElement.blur();
+        }
+    }
+
     showModal()
     {
         this.modalInstance.show();
@@ -320,6 +369,7 @@ class MessengerCallManager
 
     hideModal()
     {
+        this.blurFocusedElement();
         this.modalInstance.hide();
     }
 
@@ -382,6 +432,11 @@ class MessengerCallManager
             );
             this.updateHangupLabel(this.session.status === 'active' ? 'Hang up' : 'Cancel call');
             this.toggleIncomingActions(false);
+            if (this.session.status === 'active') {
+                this.stopRingtone();
+            } else {
+                this.playRingtone();
+            }
             this.showModal();
             this.subscribeToSessionChannel(this.session.uuid);
         } catch (error) {
@@ -421,6 +476,7 @@ class MessengerCallManager
         this.updateStatus('Incoming call', 'warning');
         this.updateHangupLabel('Decline');
         this.toggleIncomingActions(true);
+        this.playRingtone();
         this.subscribeToSessionChannel(session.uuid);
         this.showModal();
 
@@ -466,6 +522,7 @@ class MessengerCallManager
             this.session = response.session;
             this.role = 'callee';
             this.callType = this.session.call_type || this.callType;
+            this.stopRingtone();
             this.setParticipantCard(this.session.caller);
             this.setCallMode(this.callType);
             this.toggleIncomingActions(false);
@@ -506,6 +563,7 @@ class MessengerCallManager
                 this.notifyAjaxError(error, 'Unable to finish the call.');
             }
         } finally {
+            this.stopRingtone();
             this.cleanup({ leaveSession: true });
             this.hideModal();
         }
@@ -527,6 +585,7 @@ class MessengerCallManager
 
         switch (event.type) {
         case 'accepted':
+            this.stopRingtone();
             if (this.role === 'caller' && !this.negotiationStarted) {
                 this.$title.text(`Calling ${participantName(this.session.callee)}`);
                 this.updateStatus('Connecting...', 'warning');
@@ -534,12 +593,14 @@ class MessengerCallManager
             }
             break;
         case 'declined':
+            this.stopRingtone();
             notify('info', 'The call was declined.');
             this.updateStatus('Call declined', 'danger');
             this.cleanup({ leaveSession: true });
             this.hideModal();
             break;
         case 'hangup':
+            this.stopRingtone();
             this.updateStatus('Call ended', 'muted');
             this.cleanup({ leaveSession: true });
             this.hideModal();
@@ -612,6 +673,7 @@ class MessengerCallManager
             await this.ensurePeerConnection();
             await this.peerConnection.setRemoteDescription(new RTCSessionDescription(signalData));
             await this.flushPendingCandidates();
+            this.stopRingtone();
             this.updateStatus('Connected', 'success');
 
             if (this.callType === 'video') {
@@ -763,11 +825,6 @@ class MessengerCallManager
         });
     }
 
-    async sendNotificationSound()
-    {
-        // Placeholder in case we want to add a ringtone later.
-    }
-
     setActionButtonsDisabled(disabled)
     {
         this.$acceptButton.prop('disabled', disabled);
@@ -818,6 +875,7 @@ class MessengerCallManager
     {
         this.stopMediaStream();
         this.closePeerConnection();
+        this.stopRingtone();
 
         if (leaveSession) {
             this.leaveSessionChannel();

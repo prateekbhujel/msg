@@ -129,17 +129,22 @@ class MessengerController extends Controller
             'attachments' => ['nullable', 'array'],
             'attachments.*' => ['nullable', 'file', 'max:51200'],
             'voice_message' => ['nullable', 'file', 'max:51200', 'mimes:webm,ogg,mp3,wav,m4a,aac'],
+            'voice_duration_seconds' => ['nullable', 'integer', 'min:0', 'max:120'],
         ]);
 
         $attachments = $this->collectAttachments($request);
         $voiceAttachment = $this->collectVoiceAttachment($request);
         $allAttachments = array_merge($attachments, $voiceAttachment ? [$voiceAttachment] : []);
+        $voiceDurationSeconds = (int) $request->integer('voice_duration_seconds', 0);
 
         $message = new Message();
         $message->from_id = Auth::user()->id;
         $message->to_id = $request->id;
         $message->message_type = $voiceAttachment && empty($attachments) ? 'voice' : (!empty($allAttachments) ? 'media' : 'text');
         $message->body = $request->message;
+        $message->meta = array_filter([
+            'duration_seconds' => $voiceDurationSeconds > 0 ? $voiceDurationSeconds : null,
+        ], static fn ($value) => $value !== null);
 
         if (! empty($allAttachments)) {
             $message->attachment = $allAttachments;

@@ -16,14 +16,18 @@
     $voiceUrl = $voiceAttachment ? asset($voiceAttachment['path']) : null;
     $voiceMime = $voiceAttachment['mime'] ?? 'audio/webm';
     $voiceSize = $voiceAttachment['size'] ?? null;
+    $voiceDuration = $message->voiceNoteDurationLabel();
     $voiceSizeLabel = $voiceSize
         ? ($voiceSize >= 1048576
             ? number_format($voiceSize / 1048576, 1) . ' MB'
             : number_format($voiceSize / 1024, $voiceSize >= 10240 ? 0 : 1) . ' KB')
         : null;
-    $voiceSubtitle = $voiceSizeLabel
-        ? 'Tap play to listen · ' . $voiceSizeLabel
-        : 'Tap play to listen';
+    $voiceSubtitleParts = array_filter([
+        'Tap play to listen',
+        $voiceDuration,
+        $voiceSizeLabel,
+    ]);
+    $voiceSubtitle = implode(' · ', $voiceSubtitleParts);
 @endphp
 
 <div class="wsus__single_chat_area message-card" data-id="{{ $message->id }}" data-message-type="{{ $messageType }}">
@@ -112,18 +116,18 @@
                                     <i class="fas fa-music"></i>
                                 </div>
                                 <div class="flex-grow-1 min-w-0">
-                                    <div class="voice-note-head">
-                                        <div class="min-w-0">
-                                            <div class="voice-note-title">{{ truncate($attachmentName, 24) }}</div>
-                                            <div class="voice-note-subtitle">
-                                                Tap play to listen
-                                                @if (! empty($attachment['size']))
-                                                    · {{ $attachment['size'] >= 1048576
-                                                        ? number_format($attachment['size'] / 1048576, 1) . ' MB'
-                                                        : number_format($attachment['size'] / 1024, $attachment['size'] >= 10240 ? 0 : 1) . ' KB' }}
-                                                @endif
+                                        <div class="voice-note-head">
+                                            <div class="min-w-0">
+                                                <div class="voice-note-title">{{ truncate($attachmentName, 24) }}</div>
+                                                <div class="voice-note-subtitle">
+                                                    Tap play to listen
+                                                    @if (! empty($attachment['size']))
+                                                        · {{ $attachment['size'] >= 1048576
+                                                            ? number_format($attachment['size'] / 1048576, 1) . ' MB'
+                                                            : number_format($attachment['size'] / 1024, $attachment['size'] >= 10240 ? 0 : 1) . ' KB' }}
+                                                    @endif
+                                                </div>
                                             </div>
-                                        </div>
                                         <div class="voice-note-wave voice-note-wave--compact" aria-hidden="true">
                                             <span></span>
                                             <span></span>

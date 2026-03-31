@@ -79,3 +79,38 @@ it('stores a video attachment through the messenger send endpoint', function () 
         @unlink($storedFile);
     }
 });
+
+it('stores voice note duration metadata through the messenger send endpoint', function () {
+    $sender = User::factory()->create();
+    $recipient = User::factory()->create();
+    $voice = UploadedFile::fake()->create('voice-note.mp3', 256, 'audio/mpeg');
+
+    config()->set('messenger.upload_base_path', storage_path('framework/testing/uploads'));
+
+    $response = $this->actingAs($sender)->post(route('messenger.send-message'), [
+        'id' => $recipient->id,
+        'temporaryMsgId' => 'temp_voice_1',
+        'message' => 'Voice check',
+        'voice_message' => $voice,
+        'voice_duration_seconds' => 12,
+    ]);
+
+    $response->assertOk()
+        ->assertJsonStructure(['message', 'tempID']);
+
+    $message = Message::latest('id')->firstOrFail();
+    $attachments = $message->attachmentItems();
+
+    expect($message->message_type)->toBe('voice');
+    expect($message->voiceNoteDurationSeconds())->toBe(12);
+    expect($message->voiceNoteDurationLabel())->toBe('0:12');
+    expect($attachments)->toHaveCount(1);
+    expect($attachments[0]['type'])->toBe('audio');
+    expect($response->json('message'))->toContain('0:12');
+
+    $storedFile = storage_path('framework/testing/uploads/' . $attachments[0]['path']);
+
+    if (is_file($storedFile)) {
+        @unlink($storedFile);
+    }
+});

@@ -126,16 +126,33 @@ class Message extends Model
 
     public function callDurationLabel(): string
     {
-        $seconds = $this->callDurationSeconds();
+        return $this->formatDurationLabel($this->callDurationSeconds());
+    }
+
+    public function voiceNoteDurationSeconds(): int
+    {
+        return (int) data_get($this->meta, 'duration_seconds', 0);
+    }
+
+    public function voiceNoteDurationLabel(): string
+    {
+        $seconds = $this->voiceNoteDurationSeconds();
+
+        return $seconds > 0 ? $this->formatDurationLabel($seconds) : '';
+    }
+
+    protected function formatDurationLabel(int $seconds): string
+    {
+        $seconds = max(0, $seconds);
         $hours = intdiv($seconds, 3600);
         $minutes = intdiv($seconds % 3600, 60);
         $remainingSeconds = $seconds % 60;
 
         if ($hours > 0) {
-            return sprintf('%02d:%02d:%02d', $hours, $minutes, $remainingSeconds);
+            return sprintf('%d:%02d:%02d', $hours, $minutes, $remainingSeconds);
         }
 
-        return sprintf('%02d:%02d', $minutes, $remainingSeconds);
+        return sprintf('%d:%02d', $minutes, $remainingSeconds);
     }
 
     public function attachmentSummary(): string
@@ -188,9 +205,11 @@ class Message extends Model
         }
 
         if ($this->isVoiceMessage()) {
+            $durationLabel = $this->voiceNoteDurationLabel();
+
             return $this->from_id === $viewerId
-                ? 'You sent a voice note.'
-                : 'Sent a voice note.';
+                ? 'You sent a voice note' . ($durationLabel ? ' · ' . $durationLabel : '') . '.'
+                : 'Sent a voice note' . ($durationLabel ? ' · ' . $durationLabel : '') . '.';
         }
 
         if ($this->hasAttachments()) {

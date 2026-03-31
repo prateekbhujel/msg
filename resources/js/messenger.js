@@ -14,7 +14,13 @@ var voiceRecordingBlob = null;
 var voiceRecordingUrl = null;
 var voiceRecordingStopResolver = null;
 var voiceRecordingActive = false;
+var voiceRecordingTimer = null;
+var voiceRecordingStartedAt = null;
+var voiceRecordingLimitReached = false;
+var voiceRecordingDurationSeconds = 0;
 var attachmentPreviewUrls = [];
+
+const VOICE_RECORDING_MAX_SECONDS = 120;
 
 const messageForm             = $(".message-form"),
       messageInput            = $(".message-input"),
@@ -63,16 +69,23 @@ function truncateText(value, limit = 24)
 
 function formatDurationSeconds(seconds)
 {
-    const totalSeconds = Number(seconds || 0);
+    const totalSeconds = Math.max(0, Math.round(Number(seconds || 0)));
     const hours = Math.floor(totalSeconds / 3600);
     const minutes = Math.floor((totalSeconds % 3600) / 60);
     const remainingSeconds = totalSeconds % 60;
 
     if (hours > 0) {
-        return [hours, minutes, remainingSeconds].map((part) => String(part).padStart(2, '0')).join(':');
+        return [hours, String(minutes).padStart(2, '0'), String(remainingSeconds).padStart(2, '0')].join(':');
     }
 
-    return [minutes, remainingSeconds].map((part) => String(part).padStart(2, '0')).join(':');
+    return `${minutes}:${String(remainingSeconds).padStart(2, '0')}`;
+}
+
+function formatVoiceRecordingLabel(elapsedSeconds)
+{
+    const safeElapsed = Math.max(0, Math.min(Number(elapsedSeconds || 0), VOICE_RECORDING_MAX_SECONDS));
+
+    return `Recording voice note... ${formatDurationSeconds(safeElapsed)} / ${formatDurationSeconds(VOICE_RECORDING_MAX_SECONDS)}`;
 }
 
 function formatTimestampLabel(timestamp)
@@ -212,11 +225,12 @@ function renderVoicePlayerMarkup({
     title = 'Voice note',
     subtitle = 'Tap play to listen',
     iconClass = 'fas fa-microphone',
+    durationText = '',
     sizeText = '',
     variantClass = '',
 } = {})
 {
-    const subtitleParts = [subtitle, sizeText].filter(Boolean);
+    const subtitleParts = [subtitle, durationText, sizeText].filter(Boolean);
     const subtitleLabel = escapeHtml(subtitleParts.join(' · '));
     const waveClass = `voice-note-wave${variantClass.includes('recording') ? ' voice-note-wave--recording' : ''}`;
 
@@ -447,6 +461,55 @@ function updateComposerVoiceStatus(text, active = false)
 
     voiceRecordStatus.text(text).toggleClass('d-none', !text);
     voiceRecordStatus.toggleClass('text-danger', active);
+    voiceRecordStatus.toggleClass('text-warning', false);
+}
+
+function setComposerVoiceRecordingStatus(elapsedSeconds = 0)
+{
+    if (!voiceRecordStatus.length) {
+        return;
+    }
+
+    const safeElapsed = Math.max(0, Math.min(Number(elapsedSeconds || 0), VOICE_RECORDING_MAX_SECONDS));
+    const remainingSeconds = Math.max(0, VOICE_RECORDING_MAX_SECONDS - safeElapsed);
+
+    updateComposerVoiceStatus(formatVoiceRecordingLabel(safeElapsed), true);
+    voiceRecordStatus.toggleClass('text-danger', remainingSeconds > 10);
+    voiceRecordStatus.toggleClass('text-warning', remainingSeconds <= 10);
+}
+
+function clearVoiceRecordingTimer()
+{
+    if (voiceRecordingTimer) {
+        window.clearInterval(voiceRecordingTimer);
+        voiceRecordingTimer = null;
+    }
+
+    voiceRecordingStartedAt = null;
+}
+
+function getVoiceRecordingElapsedSeconds()
+{
+    if (!voiceRecordingStartedAt) {
+        return 0;
+    }
+
+    return Math.max(0, Math.floor((Date.now() - voiceRecordingStartedAt) / 1000));
+}
+
+function refreshVoiceRecordingStatus()
+{
+    if (!voiceRecordingActive || !voiceRecordingStartedAt) {
+        return;
+    }
+
+    const elapsedSeconds = Math.floor((Date.now() - voiceRecordingStartedAt) / 1000);
+    setComposerVoiceRecordingStatus(elapsedSeconds);
+
+    if (elapsedSeconds >= VOICE_RECORDING_MAX_SECONDS) {
+        voiceRecordingLimitReached = true;
+        stopVoiceRecording();
+    }
 }
 
 function renderAttachmentPreview()
@@ -520,6 +583,7 @@ function clearVoiceRecordingPreview()
     }
 
     voiceRecordingBlob = null;
+    voiceRecordingDurationSeconds = 0;
     voicePreview.addClass('d-none').empty();
     updateComposerVoiceStatus('', false);
     toggleComposerState('has-voice-preview', false);
@@ -527,6 +591,8 @@ function clearVoiceRecordingPreview()
 
 function resetVoiceRecordingState()
 {
+    clearVoiceRecordingTimer();
+
     if (voiceRecorder && voiceRecordingActive) {
         voiceRecorder.stop();
     }
@@ -539,6 +605,8 @@ function resetVoiceRecordingState()
     voiceRecordingStream = null;
     voiceRecordingChunks = [];
     voiceRecordingActive = false;
+    voiceRecordingLimitReached = false;
+    voiceRecordingDurationSeconds = 0;
     toggleComposerState('is-recording', false);
     setVoiceRecordButtonState(false);
 
@@ -556,6 +624,7 @@ function stopVoiceRecording()
             return;
         }
 
+        clearVoiceRecordingTimer();
         voiceRecordingStopResolver = () => {
             resolve();
         };
@@ -578,7 +647,9 @@ async function startVoiceRecording()
 
     try {
         clearVoiceRecordingPreview();
-        updateComposerVoiceStatus('Recording voice note...', true);
+        clearVoiceRecordingTimer();
+        voiceRecordingLimitReached = false;
+        updateComposerVoiceStatus(formatVoiceRecordingLabel(0), true);
         voiceRecordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         voiceRecordingChunks = [];
         voiceRecorder = new MediaRecorder(voiceRecordingStream);
@@ -586,6 +657,7 @@ async function startVoiceRecording()
         const recorder = voiceRecorder;
         toggleComposerState('is-recording', true);
         setVoiceRecordButtonState(true);
+        voiceRecordingStartedAt = Date.now();
 
         voiceRecorder.ondataavailable = (event) => {
             if (event.data && event.data.size > 0) {
@@ -596,11 +668,14 @@ async function startVoiceRecording()
         voiceRecorder.onstop = () => {
             const mimeType = recorder?.mimeType || 'audio/webm';
             const blob = new Blob(voiceRecordingChunks, { type: mimeType });
+            const recordedSeconds = Math.max(1, getVoiceRecordingElapsedSeconds());
 
             if (voiceRecordingStream) {
                 voiceRecordingStream.getTracks().forEach((track) => track.stop());
             }
 
+            clearVoiceRecordingTimer();
+            voiceRecordingDurationSeconds = recordedSeconds;
             voiceRecordingBlob = blob.size > 0 ? blob : null;
             toggleComposerState('is-recording', false);
 
@@ -616,6 +691,7 @@ async function startVoiceRecording()
                     title: 'Voice note ready',
                     subtitle: 'Tap play to review',
                     iconClass: 'fas fa-microphone',
+                    durationText: formatDurationSeconds(voiceRecordingDurationSeconds),
                     sizeText: formatFileSize(voiceRecordingBlob.size) || '',
                     variantClass: 'voice-note-card--message voice-note-card--recording',
                 })).removeClass('d-none');
@@ -630,6 +706,11 @@ async function startVoiceRecording()
             setVoiceRecordButtonState(false);
             updateComposerVoiceStatus('', false);
 
+            if (voiceRecordingLimitReached) {
+                notyf.info('Voice note reached the 2 minute limit and stopped automatically.');
+            }
+            voiceRecordingLimitReached = false;
+
             if (voiceRecordingStopResolver) {
                 const resolver = voiceRecordingStopResolver;
                 voiceRecordingStopResolver = null;
@@ -638,7 +719,10 @@ async function startVoiceRecording()
         };
 
         voiceRecorder.start();
+        voiceRecordingTimer = window.setInterval(refreshVoiceRecordingStatus, 1000);
+        refreshVoiceRecordingStatus();
     } catch (error) {
+        clearVoiceRecordingTimer();
         voiceRecordingActive = false;
         setVoiceRecordButtonState(false);
         toggleComposerState('is-recording', false);
@@ -759,6 +843,8 @@ function renderReceivedMessageCard(e)
         const voiceAttachment = attachments[0] || null;
         const voiceUrl = voiceAttachment?.path ? resolveAssetUrl(voiceAttachment.path) : '';
         const voiceMime = voiceAttachment?.mime || 'audio/webm';
+        const voiceDurationSeconds = Number(e?.meta?.duration_seconds || 0);
+        const voiceDuration = voiceDurationSeconds > 0 ? formatDurationSeconds(voiceDurationSeconds) : '';
         const voiceSize = formatFileSize(voiceAttachment?.size);
 
         return `
@@ -770,6 +856,7 @@ function renderReceivedMessageCard(e)
                         title: body || 'Voice note',
                         subtitle: 'Tap play to listen',
                         iconClass: 'fas fa-microphone',
+                        durationText: voiceDuration,
                         sizeText: voiceSize || '',
                         variantClass: 'voice-note-card--message',
                     })}
@@ -858,6 +945,7 @@ async function sendMessage()
             );
 
             formData.append('voice_message', voiceFile, voiceFile.name);
+            formData.append('voice_duration_seconds', String(Math.max(1, Number(voiceRecordingDurationSeconds || 0))));
         }
 
         $.ajax({

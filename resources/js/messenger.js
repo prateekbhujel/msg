@@ -226,13 +226,15 @@ function renderAttachmentPreview()
                     : 'fas fa-image';
 
         const mediaMarkup = attachmentType === 'image'
-            ? `<img src="${url}" alt="${safeFileName}" class="img-fluid rounded-3" style="width: 92px; height: 92px; object-fit: cover;">`
-            : `<div class="rounded-3 bg-light d-flex align-items-center justify-content-center" style="width: 92px; height: 92px;"><i class="${icon} fs-3 text-primary"></i></div>`;
+            ? `<img src="${url}" alt="${safeFileName}" class="attachment-preview-media attachment-preview-media-image">`
+            : `<div class="attachment-preview-placeholder"><i class="${icon} fs-3 text-primary"></i></div>`;
 
         return `
-            <div class="border rounded-3 bg-white p-2 d-flex flex-column gap-2" style="width: 120px;">
-                ${mediaMarkup}
-                <span class="small text-truncate" title="${safeFileName}">${truncateText(safeFileName, 18)}</span>
+            <div class="attachment-preview-card">
+                <div class="attachment-preview-media-wrap">
+                    ${mediaMarkup}
+                </div>
+                <span class="attachment-preview-name" title="${safeFileName}">${truncateText(safeFileName, 18)}</span>
             </div>
         `;
     }).join('');
@@ -318,6 +320,7 @@ async function startVoiceRecording()
         voiceRecorder = new MediaRecorder(voiceRecordingStream);
         voiceRecordingActive = true;
         voiceRecordToggle.addClass('active');
+        voiceRecordToggle.attr('aria-pressed', 'true');
 
         voiceRecorder.ondataavailable = (event) => {
             if (event.data && event.data.size > 0) {
@@ -342,7 +345,7 @@ async function startVoiceRecording()
 
                 voiceRecordingUrl = URL.createObjectURL(voiceRecordingBlob);
                 voicePreview.html(`
-                    <div class="border rounded-4 bg-white p-3 d-flex align-items-center gap-3">
+                    <div class="voice-note-card">
                         <i class="fas fa-microphone text-danger fs-5"></i>
                         <div class="flex-grow-1">
                             <div class="fw-semibold">Voice note ready</div>
@@ -357,6 +360,7 @@ async function startVoiceRecording()
             voiceRecordingChunks = [];
             voiceRecordingActive = false;
             voiceRecordToggle.removeClass('active');
+            voiceRecordToggle.attr('aria-pressed', 'false');
             updateComposerVoiceStatus('', false);
 
             if (voiceRecordingStopResolver) {
@@ -370,6 +374,7 @@ async function startVoiceRecording()
     } catch (error) {
         voiceRecordingActive = false;
         voiceRecordToggle.removeClass('active');
+        voiceRecordToggle.attr('aria-pressed', 'false');
         updateComposerVoiceStatus('', false);
         notyf.error('Unable to access your microphone.');
     }
@@ -729,6 +734,7 @@ function messageFormReset()
     clearVoiceRecordingPreview();
     resetVoiceRecordingState();
     voiceRecordToggle.removeClass('active');
+    voiceRecordToggle.attr('aria-pressed', 'false');
     updateComposerVoiceStatus('', false);
     messageForm.trigger("reset");
     var emojiElt = $("#example1").emojioneArea();

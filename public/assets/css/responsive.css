@@ -132,8 +132,23 @@
         width: 30%;
     }
 
-    .wsus__chat_area_footer .footer_message .img {
-        max-width: 150px;
+    .wsus__chat_area_footer .footer_message .attachment-block {
+        padding: 14px;
+    }
+
+    .wsus__chat_area_footer form {
+        padding-left: 138px;
+        padding-right: 50px;
+    }
+
+    .wsus__chat_area_footer .footer_message .composer-actions {
+        left: 12px;
+        top: 8px;
+        gap: 6px;
+    }
+
+    .wsus__chat_area_footer .footer_message .attachment-preview-list {
+        grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
     }
 
     .wsus__chat_info_details .photo_gallery::before,
@@ -161,8 +176,8 @@
         height: 110px !important;
     }
 
-    .wsus__chat_area_footer .footer_message .img {
-        max-width: 140px;
+    .wsus__chat_area_footer .footer_message .attachment-block {
+        padding: 12px;
     }
 
     .wsus__user_list_area_height {
@@ -235,8 +250,23 @@
         padding: 10px;
     }
 
-    .wsus__chat_area_footer .footer_message .img {
-        max-width: 120px;
+    .wsus__chat_area_footer .footer_message .attachment-block {
+        padding: 12px;
+    }
+
+    .wsus__chat_area_footer form {
+        padding-left: 138px;
+        padding-right: 48px;
+    }
+
+    .wsus__chat_area_footer .footer_message .composer-actions {
+        left: 12px;
+        top: 8px;
+        gap: 6px;
+    }
+
+    .wsus__chat_area_footer .footer_message .attachment-preview-list {
+        grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
     }
 
     .wsus__chat_area_header .back_to_list {
@@ -337,8 +367,23 @@
         padding: 10px;
     }
 
-    .wsus__chat_area_footer .footer_message .img {
-        max-width: 120px;
+    .wsus__chat_area_footer .footer_message .attachment-block {
+        padding: 12px;
+    }
+
+    .wsus__chat_area_footer form {
+        padding-left: 132px;
+        padding-right: 46px;
+    }
+
+    .wsus__chat_area_footer .footer_message .composer-actions {
+        left: 10px;
+        top: 8px;
+        gap: 6px;
+    }
+
+    .wsus__chat_area_footer .footer_message .attachment-preview-list {
+        grid-template-columns: repeat(auto-fit, minmax(94px, 1fr));
     }
 
     .wsus__chat_area_header .back_to_list {

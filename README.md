@@ -17,7 +17,7 @@ Laravel 12 messenger with real-time chat, groups, voice notes, media sharing, We
 - Profile editing and username handles
 - Shared media gallery
 - Installable PWA shell with manifest + service worker
-- Local chat color themes with saved preference
+- Local Theme color themes with saved preference
 - Message-body encryption at rest through Laravel `Crypt`
 
 ## Stack

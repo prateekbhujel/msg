@@ -15,7 +15,7 @@
             <ul class="conversation-member-list"></ul>
         </div>
         <div class="chat-theme-panel">
-            <p class="photo_gallery">Chat Color</p>
+            <p class="photo_gallery">Theme Color</p>
             <div class="chat-theme-swatches">
                 <button type="button" class="chat-theme-swatch" data-chat-theme-color="#2180f3" data-chat-theme-light="#ecf5ff" style="--theme-swatch:#2180f3;" aria-label="Ocean blue"></button>
                 <button type="button" class="chat-theme-swatch" data-chat-theme-color="#0f766e" data-chat-theme-light="#ecfeff" style="--theme-swatch:#0f766e;" aria-label="Teal"></button>
@@ -30,7 +30,7 @@
         <span class="nothing_share d-none">Nothing shared yet</span>
 
         <ul class="wsus__chat_info_gallery">
-            
+
         </ul>
     </div>
 </div>

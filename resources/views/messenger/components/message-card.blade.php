@@ -1,15 +1,17 @@
 @php
-    $isMine = $message->from_id == auth()->user()->id;
-    $canDelete = $message->canBeDeletedBy((int) auth()->id());
+    $viewerId = (int) auth()->id();
+    $isMine = $message->from_id == $viewerId;
+    $canDelete = $message->canBeDeletedBy($viewerId);
+    $canInteract = $message->supportsInteractions();
     $attachments = $message->attachmentItems();
     $messageType = $message->message_type ?? 'text';
     $callType = data_get($message->meta, 'call_type', 'video');
     $callStatus = $message->callStatus();
     $statusBadge = match ($callStatus) {
-        'active' => 'bg-info text-dark',
-        'declined' => 'bg-danger text-white',
-        'ringing' => 'bg-warning text-dark',
-        default => 'bg-success text-white',
+        'active' => 'call_history_card--active',
+        'declined' => 'call_history_card--declined',
+        'ringing' => 'call_history_card--ringing',
+        default => 'call_history_card--ended',
     };
     $callIcon = $callType === 'audio' ? 'fas fa-phone' : 'fas fa-video';
     $voiceAttachment = $message->primaryAttachment();
@@ -28,28 +30,46 @@
         $voiceSizeLabel,
     ]);
     $voiceSubtitle = implode(' · ', $voiceSubtitleParts);
+    $replyPreview = $message->replyPreviewPayload($viewerId);
+    $replySnippet = $message->replySnippet();
+    $replyAuthor = $message->replyAuthorLabel($viewerId);
+    $reactionSummary = $message->reactionSummary($viewerId);
+    $reactionOptions = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
 @endphp
 
-<div class="wsus__single_chat_area message-card" data-id="{{ $message->id }}" data-message-type="{{ $messageType }}">
+<div
+    class="wsus__single_chat_area message-card"
+    data-id="{{ $message->id }}"
+    data-message-type="{{ $messageType }}"
+    @if ($canInteract)
+        data-reply-id="{{ $message->id }}"
+        data-reply-author="{{ $replyAuthor }}"
+        data-reply-snippet="{{ $replySnippet }}"
+    @endif
+>
     <div class="wsus__single_chat {{ $isMine ? 'chat_right' : '' }}">
         @if ($message->isCallMessage())
-            <div class="call_history_card rounded-4 p-3 border border-2 {{ $statusBadge }}">
-                <div class="d-flex align-items-center gap-3">
-                    <div class="flex-shrink-0 rounded-circle bg-white text-dark d-flex align-items-center justify-content-center"
-                        style="width: 54px; height: 54px;">
-                        <i class="{{ $callIcon }} fs-5"></i>
-                    </div>
-                    <div class="flex-grow-1">
-                        <div class="fw-semibold mb-1">{{ $message->body }}</div>
-                        <div class="small">
-                            <span>{{ ucfirst($callStatus) }}</span>
-                            <span class="mx-1">•</span>
-                            <span>{{ $message->callDurationLabel() }}</span>
-                        </div>
+            <div class="call_history_card {{ $statusBadge }}">
+                <div class="call_history_card__icon">
+                    <i class="{{ $callIcon }}"></i>
+                </div>
+                <div class="call_history_card__content">
+                    <div class="call_history_card__title">{{ $message->body }}</div>
+                    <div class="call_history_card__meta">
+                        <span>{{ ucfirst($callStatus) }}</span>
+                        <span>•</span>
+                        <span>{{ $message->callDurationLabel() }}</span>
                     </div>
                 </div>
             </div>
         @else
+            @if ($replyPreview)
+                <button type="button" class="message-reply-snippet" data-reply-jump="{{ $replyPreview['id'] }}">
+                    <span class="message-reply-snippet__label">{{ $replyPreview['sender_label'] }}</span>
+                    <span class="message-reply-snippet__text">{{ $replyPreview['snippet'] }}</span>
+                </button>
+            @endif
+
             @if ($message->body)
                 <p class="messages">{{ $message->body }}</p>
             @endif
@@ -116,18 +136,18 @@
                                     <i class="fas fa-music"></i>
                                 </div>
                                 <div class="flex-grow-1 min-w-0">
-                                        <div class="voice-note-head">
-                                            <div class="min-w-0">
-                                                <div class="voice-note-title">{{ truncate($attachmentName, 24) }}</div>
-                                                <div class="voice-note-subtitle">
-                                                    Tap play to listen
-                                                    @if (! empty($attachment['size']))
-                                                        · {{ $attachment['size'] >= 1048576
-                                                            ? number_format($attachment['size'] / 1048576, 1) . ' MB'
-                                                            : number_format($attachment['size'] / 1024, $attachment['size'] >= 10240 ? 0 : 1) . ' KB' }}
-                                                    @endif
-                                                </div>
+                                    <div class="voice-note-head">
+                                        <div class="min-w-0">
+                                            <div class="voice-note-title">{{ truncate($attachmentName, 24) }}</div>
+                                            <div class="voice-note-subtitle">
+                                                Tap play to listen
+                                                @if (! empty($attachment['size']))
+                                                    · {{ $attachment['size'] >= 1048576
+                                                        ? number_format($attachment['size'] / 1048576, 1) . ' MB'
+                                                        : number_format($attachment['size'] / 1024, $attachment['size'] >= 10240 ? 0 : 1) . ' KB' }}
+                                                @endif
                                             </div>
+                                        </div>
                                         <div class="voice-note-wave voice-note-wave--compact" aria-hidden="true">
                                             <span></span>
                                             <span></span>
@@ -170,16 +190,61 @@
                     @endforeach
                 </div>
             @endif
+
+            @if (count($reactionSummary) > 0)
+                <div class="message-reactions" data-message-reactions data-message-id="{{ $message->id }}">
+                    @foreach ($reactionSummary as $reaction)
+                        <button
+                            type="button"
+                            class="message-reaction-chip {{ $reaction['reacted'] ? 'is-active' : '' }}"
+                            data-msgid="{{ $message->id }}"
+                            data-reaction="{{ $reaction['emoji'] }}"
+                        >
+                            <span>{{ $reaction['emoji'] }}</span>
+                            <span>{{ $reaction['count'] }}</span>
+                        </button>
+                    @endforeach
+                </div>
+            @endif
+        @endif
+
+        @if ($canInteract || $canDelete)
+            <div class="message-actions-stack">
+                @if ($canInteract)
+                    <button type="button" class="message-action-button message-reply-trigger" data-msgid="{{ $message->id }}" aria-label="Reply to message">
+                        <i class="fas fa-reply"></i>
+                    </button>
+                    <div class="message-reaction-picker-wrap">
+                        <button type="button" class="message-action-button message-react-trigger" data-msgid="{{ $message->id }}" aria-label="React to message">
+                            <i class="far fa-smile"></i>
+                        </button>
+                        <div class="message-reaction-picker" data-reaction-picker>
+                            @foreach ($reactionOptions as $reactionOption)
+                                <button
+                                    type="button"
+                                    class="message-reaction-option"
+                                    data-msgid="{{ $message->id }}"
+                                    data-reaction="{{ $reactionOption }}"
+                                >
+                                    {{ $reactionOption }}
+                                </button>
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
+
+                @if ($canDelete)
+                    <button type="button" class="message-action-button dlt-message" data-msgid="{{ $message->id }}" aria-label="Delete message">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                @endif
+            </div>
         @endif
 
         @if (! $message->isCallMessage())
             <span class="time">{{ timeAgo($message->created_at) }}</span>
         @else
             <span class="time">{{ timeAgo($message->created_at) }} · {{ $message->callDurationLabel() }}</span>
-        @endif
-
-        @if ($canDelete)
-            <a class="action dlt-message" href="javascript:void()" data-msgid="{{ $message->id }}"><i class="fas fa-trash"></i></a>
         @endif
     </div>
 </div>

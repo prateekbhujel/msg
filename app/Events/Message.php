@@ -52,10 +52,13 @@ class Message implements ShouldBroadcast
             'id'            => $this->message->id,
             'body'          => $this->message->body,
             'to_id'         => $this->message->to_id,
+            'reply_to_id'   => $this->message->reply_to_id,
+            'reply_preview' => $this->message->replyPreviewPayload((int) $this->message->to_id),
             'attachment'    => $attachments[0]['path'] ?? null,
             'attachments'   => $attachments,
             'message_type'  => $this->message->message_type ?? 'text',
             'meta'          => $this->message->meta ?? [],
+            'reactions'     => $this->message->reactionSummary((int) $this->message->to_id),
             'from_id'       => $this->message->from_id,
             'created_at'    => $this->message->created_at?->toIso8601String(),
         ];

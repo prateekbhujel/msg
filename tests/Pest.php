@@ -1,6 +1,9 @@
 <?php
 
+use App\Events\Message as MessageEvent;
+use App\Events\MessageReactionUpdated;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
 
 /*
@@ -15,6 +18,16 @@ use Tests\TestCase;
 */
 
 uses(TestCase::class, RefreshDatabase::class)->in('Feature');
+
+beforeEach(function () {
+    config()->set('broadcasting.default', 'null');
+    app('config')->set('broadcasting.default', 'null');
+    app('broadcast.manager')->forgetDrivers();
+    Event::fake([
+        MessageEvent::class,
+        MessageReactionUpdated::class,
+    ]);
+});
 
 /*
 |--------------------------------------------------------------------------

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Events\Message as MessageEvent;
+use App\Events\MessageReactionUpdated;
 use App\Models\Favourite;
 use App\Models\Message;
 use App\Models\User;
@@ -11,6 +12,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class MessengerController extends Controller
 {
@@ -125,6 +127,7 @@ class MessengerController extends Controller
             'id' => ['required', 'integer'],
             'temporaryMsgId' => ['required'],
             'message' => ['nullable', 'string', 'max:5000'],
+            'reply_to_id' => ['nullable', 'integer'],
             'attachment' => ['nullable', 'file', 'max:51200'],
             'attachments' => ['nullable', 'array'],
             'attachments.*' => ['nullable', 'file', 'max:51200'],
@@ -132,6 +135,7 @@ class MessengerController extends Controller
             'voice_duration_seconds' => ['nullable', 'integer', 'min:0', 'max:120'],
         ]);
 
+        $replyToMessage = $this->resolveReplyTarget($request);
         $attachments = $this->collectAttachments($request);
         $voiceAttachment = $this->collectVoiceAttachment($request);
         $allAttachments = array_merge($attachments, $voiceAttachment ? [$voiceAttachment] : []);
@@ -140,6 +144,7 @@ class MessengerController extends Controller
         $message = new Message();
         $message->from_id = Auth::user()->id;
         $message->to_id = $request->id;
+        $message->reply_to_id = $replyToMessage?->id;
         $message->message_type = $voiceAttachment && empty($attachments) ? 'voice' : (!empty($allAttachments) ? 'media' : 'text');
         $message->body = $request->message;
         $message->meta = array_filter([
@@ -151,11 +156,13 @@ class MessengerController extends Controller
         }
         
         $message->save();
+        $message->loadMissing(['replyTo.fromUser']);
 
         //Boradcast the message Event only if the 
         //user is sending someone else not themselves
-        if(auth()->user()->id != $request->id)
-            MessageEvent::dispatch($message);
+        if (auth()->user()->id != $request->id) {
+            $this->dispatchBroadcastSafely(static fn () => MessageEvent::dispatch($message));
+        }
 
         return response()->json([
             'message' => $this->messageCard($message),
@@ -192,7 +199,8 @@ class MessengerController extends Controller
     */
     public function fetchMessages(Request $request)
     {
-        $messages = Message::where(function ($q) use ($request) {
+        $messages = Message::with(['replyTo.fromUser'])
+                        ->where(function ($q) use ($request) {
                             $q->where('from_id', Auth::id())
                                 ->where('to_id', $request->id);
                         })->orWhere(function ($q) use ($request) {
@@ -409,6 +417,31 @@ class MessengerController extends Controller
         ], 200);
     }
 
+    public function react(Request $request, Message $message)
+    {
+        $request->validate([
+            'emoji' => ['required', 'string', 'in:👍,❤️,😂,😮,😢,🔥'],
+        ]);
+
+        abort_unless($message->isParticipant((int) Auth::id()), 403);
+
+        if (! $message->supportsInteractions()) {
+            throw ValidationException::withMessages([
+                'emoji' => 'This message does not support reactions.',
+            ]);
+        }
+
+        $message->toggleReaction((string) $request->string('emoji'), (int) Auth::id());
+        $message->refresh()->loadMissing(['replyTo.fromUser']);
+
+        $this->dispatchBroadcastSafely(static fn () => MessageReactionUpdated::dispatch($message));
+
+        return response()->json([
+            'message_id' => $message->id,
+            'reactions' => $message->reactionSummary((int) Auth::id()),
+        ]);
+    }
+
     protected function collectAttachments(Request $request): array
     {
         $attachments = [];
@@ -452,6 +485,54 @@ class MessengerController extends Controller
         $storedPath = $this->storeUploadedFile($file, 'uploads/voice-notes');
 
         return $this->buildAttachmentPayload($file, $storedPath, 'audio');
+    }
+
+    protected function resolveReplyTarget(Request $request): ?Message
+    {
+        $replyToId = (int) $request->integer('reply_to_id', 0);
+
+        if ($replyToId < 1) {
+            return null;
+        }
+
+        $otherParticipantId = (int) $request->integer('id');
+        $authId = (int) Auth::id();
+
+        $replyMessage = Message::with('fromUser:id,name')
+            ->whereKey($replyToId)
+            ->where(function ($query) use ($authId, $otherParticipantId) {
+                $query->where(function ($directQuery) use ($authId, $otherParticipantId) {
+                    $directQuery->where('from_id', $authId)
+                        ->where('to_id', $otherParticipantId);
+                })->orWhere(function ($directQuery) use ($authId, $otherParticipantId) {
+                    $directQuery->where('from_id', $otherParticipantId)
+                        ->where('to_id', $authId);
+                });
+            })
+            ->first();
+
+        if (! $replyMessage) {
+            throw ValidationException::withMessages([
+                'reply_to_id' => 'The selected reply target is not part of this conversation.',
+            ]);
+        }
+
+        if (! $replyMessage->supportsInteractions()) {
+            throw ValidationException::withMessages([
+                'reply_to_id' => 'Call history items cannot be replied to.',
+            ]);
+        }
+
+        return $replyMessage;
+    }
+
+    protected function dispatchBroadcastSafely(callable $dispatcher): void
+    {
+        try {
+            $dispatcher();
+        } catch (\Throwable $throwable) {
+            report($throwable);
+        }
     }
     
 }

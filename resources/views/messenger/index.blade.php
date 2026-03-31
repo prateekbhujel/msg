@@ -46,6 +46,18 @@
                         </div>
                         <div class="attachment-preview-list"></div>
                     </div>
+                    <div class="composer-meta">
+                        <div class="composer-reply-preview d-none">
+                            <div class="composer-reply-preview__copy">
+                                <span class="composer-reply-preview__label">Replying</span>
+                                <span class="composer-reply-preview__text"></span>
+                            </div>
+                            <button type="button" class="composer-reply-clear" aria-label="Cancel reply">
+                                <i class="far fa-times"></i>
+                            </button>
+                        </div>
+                        <span class="voice-record-status d-none"></span>
+                    </div>
                     <form class="message-form" enctype="multipart/form-data">
                         <div class="composer-actions">
                             <div class="file">
@@ -56,7 +68,6 @@
                                 <button type="button" class="voice-record-toggle" title="Record voice note" aria-label="Record voice note" aria-pressed="false">
                                     <i class="fas fa-microphone"></i>
                                 </button>
-                                <span class="voice-record-status d-none small text-danger ms-2"></span>
                             </div>
                         </div>
                         <textarea class="message-input" id="example1" rows="1" placeholder="Type a message.." name="message"></textarea>

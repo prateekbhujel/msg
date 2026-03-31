@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Str;
@@ -19,6 +20,7 @@ class Message extends Model
         'attachment',
         'message_type',
         'meta',
+        'reply_to_id',
         'seen',
     ];
 
@@ -27,6 +29,21 @@ class Message extends Model
         'meta' => 'array',
         'seen' => 'boolean',
     ];
+
+    public function fromUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'from_id');
+    }
+
+    public function toUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'to_id');
+    }
+
+    public function replyTo(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'reply_to_id');
+    }
     /**
      * Encrypt the message body before saving to the database.
      *
@@ -114,6 +131,11 @@ class Message extends Model
         return ($this->message_type ?? 'text') === 'voice';
     }
 
+    public function supportsInteractions(): bool
+    {
+        return ! $this->isCallMessage();
+    }
+
     public function callStatus(): string
     {
         return (string) data_get($this->meta, 'status', 'ended');
@@ -139,6 +161,124 @@ class Message extends Model
         $seconds = $this->voiceNoteDurationSeconds();
 
         return $seconds > 0 ? $this->formatDurationLabel($seconds) : '';
+    }
+
+    public function replySnippet(): string
+    {
+        if ($this->isCallMessage()) {
+            return ucfirst((string) data_get($this->meta, 'call_type', 'video')) . ' call';
+        }
+
+        if ($this->isVoiceMessage()) {
+            $durationLabel = $this->voiceNoteDurationLabel();
+
+            return 'Voice note' . ($durationLabel ? ' · ' . $durationLabel : '');
+        }
+
+        if ($this->body) {
+            return Str::limit(trim(preg_replace('/\s+/', ' ', $this->body) ?: ''), 72, '…');
+        }
+
+        if ($this->hasAttachments()) {
+            return Str::ucfirst($this->attachmentSummary());
+        }
+
+        return 'Message';
+    }
+
+    public function replyAuthorLabel(int $viewerId): string
+    {
+        if ((int) $this->from_id === $viewerId) {
+            return 'You';
+        }
+
+        return $this->fromUser?->name ?: 'Reply';
+    }
+
+    public function replyPreviewPayload(?int $viewerId = null): ?array
+    {
+        $reply = $this->relationLoaded('replyTo') ? $this->replyTo : $this->replyTo()->with('fromUser:id,name')->first();
+
+        if (! $reply) {
+            return null;
+        }
+
+        return [
+            'id' => (int) $reply->id,
+            'from_id' => (int) $reply->from_id,
+            'message_type' => $reply->message_type ?? 'text',
+            'snippet' => $reply->replySnippet(),
+            'sender_name' => $reply->fromUser?->name,
+            'sender_label' => $viewerId !== null
+                ? $reply->replyAuthorLabel($viewerId)
+                : ($reply->fromUser?->name ?: 'Reply'),
+        ];
+    }
+
+    public function reactionMap(): array
+    {
+        $rawReactions = data_get($this->meta, 'reactions', []);
+
+        if (! is_array($rawReactions)) {
+            return [];
+        }
+
+        return collect($rawReactions)
+            ->mapWithKeys(function ($userIds, $emoji) {
+                $sanitizedIds = collect(Arr::wrap($userIds))
+                    ->map(fn ($id) => (int) $id)
+                    ->filter(fn ($id) => $id > 0)
+                    ->unique()
+                    ->values()
+                    ->all();
+
+                return count($sanitizedIds) > 0 ? [$emoji => $sanitizedIds] : [];
+            })
+            ->all();
+    }
+
+    public function reactionSummary(?int $viewerId = null): array
+    {
+        return collect($this->reactionMap())
+            ->map(fn (array $userIds, string $emoji) => [
+                'emoji' => $emoji,
+                'count' => count($userIds),
+                'reacted' => $viewerId !== null && in_array($viewerId, $userIds, true),
+            ])
+            ->values()
+            ->all();
+    }
+
+    public function toggleReaction(string $emoji, int $userId): array
+    {
+        $emoji = trim($emoji);
+        $reactions = collect($this->reactionMap());
+        $userIds = collect($reactions->get($emoji, []));
+
+        if ($userIds->contains($userId)) {
+            $userIds = $userIds->reject(fn ($id) => (int) $id === $userId)->values();
+        } else {
+            $userIds->push($userId);
+        }
+
+        if ($userIds->isEmpty()) {
+            $reactions->forget($emoji);
+        } else {
+            $reactions->put($emoji, $userIds->map(fn ($id) => (int) $id)->unique()->values()->all());
+        }
+
+        $meta = $this->meta ?? [];
+
+        if ($reactions->isEmpty()) {
+            unset($meta['reactions']);
+        } else {
+            $meta['reactions'] = $reactions->all();
+        }
+
+        $this->meta = empty($meta) ? null : $meta;
+        $this->save();
+
+        return $this->reactionSummary($userId);
     }
 
     protected function formatDurationLabel(int $seconds): string

@@ -20,8 +20,10 @@ var voiceRecordingLimitReached = false;
 var voiceRecordingDurationSeconds = 0;
 var messageSending = false;
 var attachmentPreviewUrls = [];
+var composerReplyTarget = null;
 
 const VOICE_RECORDING_MAX_SECONDS = 120;
+const REACTION_OPTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
 
 const messageForm             = $(".message-form"),
       messageInput            = $(".message-input"),
@@ -35,6 +37,9 @@ const messageForm             = $(".message-form"),
       attachmentPreviewBlock  = $(".attachment-block"),
       attachmentPreviewList   = $(".attachment-preview-list"),
       voicePreview            = $(".voice-preview"),
+      composerReplyPreview    = $(".composer-reply-preview"),
+      composerReplyLabel      = $(".composer-reply-preview__label"),
+      composerReplyText       = $(".composer-reply-preview__text"),
       voiceRecordToggle       = $(".voice-record-toggle"),
       voiceRecordStatus       = $(".voice-record-status"),
       voiceRecordToggleIcon   = $(".voice-record-toggle i");
@@ -86,7 +91,7 @@ function formatVoiceRecordingLabel(elapsedSeconds)
 {
     const safeElapsed = Math.max(0, Math.min(Number(elapsedSeconds || 0), VOICE_RECORDING_MAX_SECONDS));
 
-    return `Recording voice note... ${formatDurationSeconds(safeElapsed)} / ${formatDurationSeconds(VOICE_RECORDING_MAX_SECONDS)}`;
+    return `${formatDurationSeconds(safeElapsed)} / ${formatDurationSeconds(VOICE_RECORDING_MAX_SECONDS)}`;
 }
 
 function formatTimestampLabel(timestamp)
@@ -205,6 +210,11 @@ function focusComposer()
     messageInput.trigger('focus');
 }
 
+function getConversationPartnerLabel()
+{
+    return $('.messenger-header').find('h4').text().trim() || 'Reply';
+}
+
 function setComposerSendingState(active = false)
 {
     messageSending = !!active;
@@ -239,6 +249,165 @@ function formatFileSize(bytes)
 function renderVoiceWaveBars()
 {
     return '<span></span><span></span><span></span><span></span><span></span>';
+}
+
+function renderVoiceRecordingStatusMarkup(elapsedSeconds = 0)
+{
+    const label = formatVoiceRecordingLabel(elapsedSeconds);
+
+    return `
+        <span class="voice-record-status__pulse" aria-hidden="true"></span>
+        <span class="voice-record-status__label">Recording</span>
+        <span class="voice-record-status__timer">${escapeHtml(label)}</span>
+        <span class="voice-record-status__wave" aria-hidden="true">${renderVoiceWaveBars()}</span>
+    `;
+}
+
+function normalizeReactionSummary(reactions, reactionMap = null)
+{
+    if (Array.isArray(reactions)) {
+        return reactions.map((reaction) => ({
+            emoji: reaction.emoji,
+            count: Number(reaction.count || 0),
+            reacted: !!reaction.reacted,
+        })).filter((reaction) => reaction.emoji && reaction.count > 0);
+    }
+
+    const normalizedMap = reactionMap && typeof reactionMap === 'object'
+        ? reactionMap
+        : reactions && typeof reactions === 'object'
+            ? reactions
+            : {};
+
+    return Object.entries(normalizedMap).map(([emoji, userIds]) => {
+        const normalizedUserIds = Array.isArray(userIds)
+            ? userIds.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
+            : [];
+
+        return {
+            emoji,
+            count: normalizedUserIds.length,
+            reacted: normalizedUserIds.includes(Number(auth_id)),
+        };
+    }).filter((reaction) => reaction.emoji && reaction.count > 0);
+}
+
+function resolveReplyAuthorLabel(replyPreview)
+{
+    if (!replyPreview) {
+        return 'Reply';
+    }
+
+    if (replyPreview.sender_label) {
+        return replyPreview.sender_label;
+    }
+
+    if (Number(replyPreview.from_id) === Number(auth_id)) {
+        return 'You';
+    }
+
+    return replyPreview.sender_name || getConversationPartnerLabel();
+}
+
+function renderReplyPreviewMarkup(replyPreview)
+{
+    if (!replyPreview || !replyPreview.id) {
+        return '';
+    }
+
+    return `
+        <button type="button" class="message-reply-snippet" data-reply-jump="${replyPreview.id}">
+            <span class="message-reply-snippet__label">${escapeHtml(resolveReplyAuthorLabel(replyPreview))}</span>
+            <span class="message-reply-snippet__text">${escapeHtml(replyPreview.snippet || 'Message')}</span>
+        </button>
+    `;
+}
+
+function renderReactionSummaryMarkup(messageId, reactions = [])
+{
+    const normalizedReactions = normalizeReactionSummary(reactions);
+
+    if (!normalizedReactions.length) {
+        return '';
+    }
+
+    return `
+        <div class="message-reactions" data-message-reactions data-message-id="${messageId}">
+            ${normalizedReactions.map((reaction) => `
+                <button
+                    type="button"
+                    class="message-reaction-chip ${reaction.reacted ? 'is-active' : ''}"
+                    data-msgid="${messageId}"
+                    data-reaction="${escapeHtml(reaction.emoji)}"
+                >
+                    <span>${escapeHtml(reaction.emoji)}</span>
+                    <span>${reaction.count}</span>
+                </button>
+            `).join('')}
+        </div>
+    `;
+}
+
+function renderMessageActionsMarkup({ messageId, canDelete = false, canInteract = true } = {})
+{
+    if (!canDelete && !canInteract) {
+        return '';
+    }
+
+    return `
+        <div class="message-actions-stack">
+            ${canInteract ? `
+                <button type="button" class="message-action-button message-reply-trigger" data-msgid="${messageId}" aria-label="Reply to message">
+                    <i class="fas fa-reply"></i>
+                </button>
+                <div class="message-reaction-picker-wrap">
+                    <button type="button" class="message-action-button message-react-trigger" data-msgid="${messageId}" aria-label="React to message">
+                        <i class="far fa-smile"></i>
+                    </button>
+                    <div class="message-reaction-picker" data-reaction-picker>
+                        ${REACTION_OPTIONS.map((emoji) => `
+                            <button type="button" class="message-reaction-option" data-msgid="${messageId}" data-reaction="${escapeHtml(emoji)}">
+                                ${escapeHtml(emoji)}
+                            </button>
+                        `).join('')}
+                    </div>
+                </div>
+            ` : ''}
+            ${canDelete ? `
+                <button type="button" class="message-action-button dlt-message" data-msgid="${messageId}" aria-label="Delete message">
+                    <i class="fas fa-trash"></i>
+                </button>
+            ` : ''}
+        </div>
+    `;
+}
+
+function renderCallHistoryCardMarkup({ body, callType = 'video', status = 'ended', duration = '0:00' } = {})
+{
+    const callIcon = callType === 'audio' ? 'fas fa-phone' : 'fas fa-video';
+    const badgeClass = status === 'active'
+        ? 'call_history_card--active'
+        : status === 'declined'
+            ? 'call_history_card--declined'
+            : status === 'ringing'
+                ? 'call_history_card--ringing'
+                : 'call_history_card--ended';
+
+    return `
+        <div class="call_history_card ${badgeClass}">
+            <div class="call_history_card__icon">
+                <i class="${callIcon}"></i>
+            </div>
+            <div class="call_history_card__content">
+                <div class="call_history_card__title">${body}</div>
+                <div class="call_history_card__meta">
+                    <span>${formatCallStatusLabel(status)}</span>
+                    <span>•</span>
+                    <span>${duration}</span>
+                </div>
+            </div>
+        </div>
+    `;
 }
 
 function renderVoicePlayerMarkup({
@@ -475,15 +644,15 @@ function clearAttachmentPreviewUrls()
     attachmentPreviewUrls = [];
 }
 
-function updateComposerVoiceStatus(text, active = false)
+function updateComposerVoiceStatus(content = '', active = false, warning = false)
 {
     if (!voiceRecordStatus.length) {
         return;
     }
 
-    voiceRecordStatus.text(text).toggleClass('d-none', !text);
-    voiceRecordStatus.toggleClass('text-danger', active);
-    voiceRecordStatus.toggleClass('text-warning', false);
+    voiceRecordStatus.html(content).toggleClass('d-none', !content);
+    voiceRecordStatus.toggleClass('is-active', active);
+    voiceRecordStatus.toggleClass('is-warning', warning);
 }
 
 function setComposerVoiceRecordingStatus(elapsedSeconds = 0)
@@ -495,9 +664,11 @@ function setComposerVoiceRecordingStatus(elapsedSeconds = 0)
     const safeElapsed = Math.max(0, Math.min(Number(elapsedSeconds || 0), VOICE_RECORDING_MAX_SECONDS));
     const remainingSeconds = Math.max(0, VOICE_RECORDING_MAX_SECONDS - safeElapsed);
 
-    updateComposerVoiceStatus(formatVoiceRecordingLabel(safeElapsed), true);
-    voiceRecordStatus.toggleClass('text-danger', remainingSeconds > 10);
-    voiceRecordStatus.toggleClass('text-warning', remainingSeconds <= 10);
+    updateComposerVoiceStatus(
+        renderVoiceRecordingStatusMarkup(safeElapsed),
+        true,
+        remainingSeconds <= 10
+    );
 }
 
 function clearVoiceRecordingTimer()
@@ -611,6 +782,39 @@ function clearVoiceRecordingPreview()
     toggleComposerState('has-voice-preview', false);
 }
 
+function setComposerReplyTarget(replyPreview)
+{
+    if (!composerReplyPreview.length || !replyPreview?.id) {
+        composerReplyTarget = null;
+        return;
+    }
+
+    composerReplyTarget = {
+        id: Number(replyPreview.id),
+        sender_label: resolveReplyAuthorLabel(replyPreview),
+        snippet: replyPreview.snippet || 'Message',
+    };
+
+    composerReplyLabel.text(`Replying to ${composerReplyTarget.sender_label}`);
+    composerReplyText.text(composerReplyTarget.snippet);
+    composerReplyPreview.removeClass('d-none');
+    toggleComposerState('has-reply-preview', true);
+}
+
+function clearComposerReplyTarget()
+{
+    composerReplyTarget = null;
+
+    if (!composerReplyPreview.length) {
+        return;
+    }
+
+    composerReplyLabel.text('Replying');
+    composerReplyText.text('');
+    composerReplyPreview.addClass('d-none');
+    toggleComposerState('has-reply-preview', false);
+}
+
 function resetVoiceRecordingState()
 {
     clearVoiceRecordingTimer();
@@ -642,6 +846,7 @@ function finishComposerSend({ clearText = true } = {})
 {
     clearComposerAttachments();
     clearVoiceRecordingPreview();
+    clearComposerReplyTarget();
     resetVoiceRecordingState();
     setComposerSendingState(false);
 
@@ -838,43 +1043,34 @@ function renderReceivedMessageCard(e)
     const attachments = normalizeAttachments(e.attachments || e.attachment, messageType);
     const isMine = Number(e.from_id) === Number(auth_id);
     const canDelete = isMine && messageType !== 'call';
+    const canInteract = messageType !== 'call';
     const bodyText = typeof e.body === 'string' ? e.body.trim() : (e.body || '');
     const body = escapeHtml(bodyText);
     const messageTime = formatTimestampLabel(e.created_at);
+    const replyPreview = e.reply_preview || null;
+    const reactions = normalizeReactionSummary(e.reactions, e.reaction_map);
+    const replySnippetText = String(
+        replyPreview?.snippet || bodyText || (messageType === 'voice' ? 'Voice note' : attachments.length ? 'Attachment' : 'Message')
+    ).replace(/\s+/g, ' ').trim();
+    const replyAttributes = canInteract
+        ? `data-reply-id="${e.id}" data-reply-author="${escapeHtml(isMine ? 'You' : getConversationPartnerLabel())}" data-reply-snippet="${escapeHtml(replySnippetText)}"`
+        : '';
 
     if (messageType === 'call') {
         const callType = e?.meta?.call_type || 'video';
         const status = e?.meta?.status || 'ended';
         const duration = formatDurationSeconds(e?.meta?.duration_seconds || 0);
-        const callIcon = callType === 'audio' ? 'fas fa-phone' : 'fas fa-video';
-        const badgeClass = status === 'active'
-            ? 'bg-info text-dark'
-            : status === 'declined'
-                ? 'bg-danger text-white'
-                : status === 'ringing'
-                    ? 'bg-warning text-dark'
-                    : 'bg-success text-white';
 
         return `
             <div class="wsus__single_chat_area message-card" data-id="${e.id}" data-message-type="call">
                 <div class="wsus__single_chat ${isMine ? 'chat_right' : ''}">
-                    <div class="call_history_card rounded-4 p-3 border border-2 ${badgeClass}">
-                        <div class="d-flex align-items-center gap-3">
-                            <div class="flex-shrink-0 rounded-circle bg-white text-dark d-flex align-items-center justify-content-center" style="width: 54px; height: 54px;">
-                                <i class="${callIcon} fs-5"></i>
-                            </div>
-                            <div class="flex-grow-1">
-                                <div class="fw-semibold mb-1">${body || `${callType.charAt(0).toUpperCase()}${callType.slice(1)} call`}</div>
-                                <div class="small">
-                                    <span>${formatCallStatusLabel(status)}</span>
-                                    <span class="mx-1">•</span>
-                                    <span>${duration}</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    ${renderCallHistoryCardMarkup({
+                        body: body || `${callType.charAt(0).toUpperCase()}${callType.slice(1)} call`,
+                        callType,
+                        status,
+                        duration,
+                    })}
                     <span class="time">${messageTime} · ${duration}</span>
-                    ${canDelete ? `<a class="action dlt-message" href="javascript:void(0)" data-msgid="${e.id}"><i class="fas fa-trash"></i></a>` : ''}
                 </div>
             </div>
         `;
@@ -891,8 +1087,9 @@ function renderReceivedMessageCard(e)
         const voiceSize = formatFileSize(voiceAttachment?.size);
 
         return `
-            <div class="wsus__single_chat_area message-card" data-id="${e.id}" data-message-type="voice">
+            <div class="wsus__single_chat_area message-card" data-id="${e.id}" data-message-type="voice" ${replyAttributes}>
                 <div class="wsus__single_chat ${isMine ? 'chat_right' : ''}">
+                    ${renderReplyPreviewMarkup(replyPreview)}
                     ${renderVoicePlayerMarkup({
                         source: voiceUrl,
                         mime: voiceMime,
@@ -903,8 +1100,9 @@ function renderReceivedMessageCard(e)
                         sizeText: voiceSize || '',
                         variantClass: 'voice-note-card--message',
                     })}
+                    ${renderReactionSummaryMarkup(e.id, reactions)}
+                    ${renderMessageActionsMarkup({ messageId: e.id, canDelete, canInteract })}
                     <span class="time">${messageTime}</span>
-                    ${canDelete ? `<a class="action dlt-message" href="javascript:void(0)" data-msgid="${e.id}"><i class="fas fa-trash"></i></a>` : ''}
                 </div>
             </div>
         `;
@@ -912,23 +1110,27 @@ function renderReceivedMessageCard(e)
 
     if (attachments.length > 0) {
         return `
-            <div class="wsus__single_chat_area message-card" data-id="${e.id}" data-message-type="${messageType}">
+            <div class="wsus__single_chat_area message-card" data-id="${e.id}" data-message-type="${messageType}" ${replyAttributes}>
                 <div class="wsus__single_chat ${isMine ? 'chat_right' : ''}">
+                    ${renderReplyPreviewMarkup(replyPreview)}
                     ${body ? `<p class="messages">${body}</p>` : ''}
                     ${mediaMarkup}
+                    ${renderReactionSummaryMarkup(e.id, reactions)}
+                    ${renderMessageActionsMarkup({ messageId: e.id, canDelete, canInteract })}
                     <span class="time">${messageTime}</span>
-                    ${canDelete ? `<a class="action dlt-message" href="javascript:void(0)" data-msgid="${e.id}"><i class="fas fa-trash"></i></a>` : ''}
                 </div>
             </div>
         `;
     }
 
     return `
-        <div class="wsus__single_chat_area message-card" data-id="${e.id}" data-message-type="${messageType}">
+        <div class="wsus__single_chat_area message-card" data-id="${e.id}" data-message-type="${messageType}" ${replyAttributes}>
             <div class="wsus__single_chat ${isMine ? 'chat_right' : ''}">
+                ${renderReplyPreviewMarkup(replyPreview)}
                 ${body ? `<p class="messages">${body}</p>` : ''}
+                ${renderReactionSummaryMarkup(e.id, reactions)}
+                ${renderMessageActionsMarkup({ messageId: e.id, canDelete, canInteract })}
                 <span class="time">${messageTime}</span>
-                ${canDelete ? `<a class="action dlt-message" href="javascript:void(0)" data-msgid="${e.id}"><i class="fas fa-trash"></i></a>` : ''}
             </div>
         </div>
     `;
@@ -995,6 +1197,9 @@ async function sendMessage()
         formData.append("id", getMessengerId());
         formData.append("temporaryMsgId", tempID);
         formData.append("_token", csrf_token);
+        if (composerReplyTarget?.id) {
+            formData.append('reply_to_id', String(composerReplyTarget.id));
+        }
 
         if (hasVoiceMessage) {
             const voiceFile = new File(
@@ -1075,6 +1280,85 @@ async function sendMessage()
     }
 
 }//End Method
+
+function closeReactionPickers()
+{
+    $('[data-reaction-picker]').removeClass('is-open');
+}
+
+function applyReactionState(messageId, reactions)
+{
+    const reactionMarkup = renderReactionSummaryMarkup(messageId, reactions);
+    const messageCard = messageBoxContainer.find(`.message-card[data-id="${messageId}"]`);
+
+    if (!messageCard.length) {
+        return;
+    }
+
+    const currentReactionRow = messageCard.find('[data-message-reactions]').first();
+
+    if (reactionMarkup) {
+        if (currentReactionRow.length) {
+            currentReactionRow.replaceWith(reactionMarkup);
+        } else {
+            const actionStack = messageCard.find('.message-actions-stack').first();
+
+            if (actionStack.length) {
+                actionStack.before(reactionMarkup);
+            } else {
+                messageCard.find('.time').first().before(reactionMarkup);
+            }
+        }
+    } else {
+        currentReactionRow.remove();
+    }
+}
+
+function toggleMessageReaction(messageId, emoji)
+{
+    if (!messageId || !emoji) {
+        return;
+    }
+
+    $.ajax({
+        method: 'POST',
+        url: route('messenger.messages.react', { message: messageId }),
+        data: {
+            _token: csrf_token,
+            emoji,
+        },
+        success: function (data) {
+            applyReactionState(messageId, data.reactions || []);
+            closeReactionPickers();
+        },
+        error: function () {
+            notyf.error('Unable to update the reaction right now.');
+        }
+    });
+}
+
+function jumpToMessage(messageId)
+{
+    const target = messageBoxContainer.find(`.message-card[data-id="${messageId}"]`).first();
+
+    if (!target.length) {
+        return;
+    }
+
+    const nextTop = target.position().top + messageBoxContainer.scrollTop() - 24;
+
+    messageBoxContainer.stop().animate({
+        scrollTop: Math.max(0, nextTop),
+    }, 220);
+
+    messageBoxContainer.find('.message-card').removeClass('is-jumped-to');
+    target.addClass('is-jumped-to');
+
+    window.setTimeout(() => {
+        target.removeClass('is-jumped-to');
+    }, 1600);
+}
+
 function deleteMessage(message_id)
 {
     Swal.fire({
@@ -1094,19 +1378,20 @@ function deleteMessage(message_id)
                     message_id: message_id,
                     _token : csrf_token
                 },
-                beforeSend: function()
+                success: function(data)
                 {
                     $(`.message-card[data-id="${message_id}"]`).remove();
 
-                },
-                success: function(data)
-                {
+                    if (Number(composerReplyTarget?.id || 0) === Number(message_id)) {
+                        clearComposerReplyTarget();
+                    }
+
                     notyf.success(data.message);
                     //Update conatcts lists...
                     updateContactItem(getMessengerId());
                 },
                 error: function(xhr, status, error){
-                    // console.log(error);
+                    notyf.error(xhr?.responseJSON?.message || 'Unable to delete this message.');
                 }
             });
          
@@ -1176,6 +1461,7 @@ function messageFormReset()
 {
     clearComposerAttachments();
     clearVoiceRecordingPreview();
+    clearComposerReplyTarget();
     resetVoiceRecordingState();
     toggleComposerState('has-attachments', false);
     toggleComposerState('has-voice-preview', false);
@@ -1650,10 +1936,18 @@ window.Echo.private('message.' + auth_id)
         if(getMessengerId() == e.from_id)
         {
             messageBoxContainer.append(message);
+            initializeVoicePlayers(messageBoxContainer[0]);
             scrolllToBottom(messageBoxContainer);
         }
 
 });//End Method
+
+window.Echo.private('message.' + auth_id)
+    .listen("MessageReactionUpdated", (event) => {
+        const reactions = normalizeReactionSummary([], event.reaction_map || {});
+
+        applyReactionState(event.message_id, reactions);
+    });
 
 /** 
  *  ---------------------------------------
@@ -1900,6 +2194,53 @@ $(document).ready(function ()
     voiceRecordToggle.on('click', function (e) {
         e.preventDefault();
         startVoiceRecording();
+    });
+
+    $('body').on('click', '.composer-reply-clear', function (e) {
+        e.preventDefault();
+        clearComposerReplyTarget();
+        focusComposer();
+    });
+
+    $('body').on('click', '.message-reply-trigger', function (e) {
+        e.preventDefault();
+        const messageCard = $(this).closest('.message-card');
+
+        setComposerReplyTarget({
+            id: Number(messageCard.data('replyId')),
+            sender_label: messageCard.data('replyAuthor'),
+            snippet: messageCard.data('replySnippet'),
+        });
+
+        closeReactionPickers();
+        focusComposer();
+    });
+
+    $('body').on('click', '.message-reply-snippet', function (e) {
+        e.preventDefault();
+        jumpToMessage($(this).data('replyJump'));
+    });
+
+    $('body').on('click', '.message-react-trigger', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const picker = $(this).siblings('[data-reaction-picker]');
+        const shouldOpen = !picker.hasClass('is-open');
+
+        closeReactionPickers();
+        picker.toggleClass('is-open', shouldOpen);
+    });
+
+    $('body').on('click', '.message-reaction-option, .message-reaction-chip', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleMessageReaction($(this).data('msgid'), $(this).data('reaction'));
+    });
+
+    $('body').on('click', function (e) {
+        if (!$(e.target).closest('.message-reaction-picker-wrap').length) {
+            closeReactionPickers();
+        }
     });
 
     /**

@@ -73,4 +73,7 @@ Route::group(['middleware' => 'auth'], function() {
     //Deletes the message of the logged in user from the database
     Route::delete('messenger/delete-message', [MessengerController::class, 'deleteMessage'])->name('messenger.delete-message');
 
+    //Toggles a reaction on a direct message
+    Route::post('messenger/messages/{message}/react', [MessengerController::class, 'react'])->name('messenger.messages.react');
+
 });//End Of Messenger Routes

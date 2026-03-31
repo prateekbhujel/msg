@@ -431,35 +431,32 @@ class MessengerCallManager
         const duration = this.formatDuration(historyMessage?.meta?.duration_seconds || 0);
         const callIcon = callType === 'audio' ? 'fas fa-phone' : 'fas fa-video';
         const badgeClass = status === 'active'
-            ? 'bg-info text-dark'
+            ? 'call_history_card--active'
             : status === 'declined'
-                ? 'bg-danger text-white'
+                ? 'call_history_card--declined'
                 : status === 'ringing'
-                    ? 'bg-warning text-dark'
-                    : 'bg-success text-white';
+                    ? 'call_history_card--ringing'
+                    : 'call_history_card--ended';
         const body = escapeHtml(historyMessage.body || `${callType.charAt(0).toUpperCase()}${callType.slice(1)} call`);
         const messageTime = formatTimestampLabel(historyMessage.created_at);
 
         return `
             <div class="wsus__single_chat_area message-card" data-id="${historyMessage.id}" data-message-type="call">
                 <div class="wsus__single_chat ${isMine ? 'chat_right' : ''}">
-                    <div class="call_history_card rounded-4 p-3 border border-2 ${badgeClass}">
-                        <div class="d-flex align-items-center gap-3">
-                            <div class="flex-shrink-0 rounded-circle bg-white text-dark d-flex align-items-center justify-content-center" style="width: 54px; height: 54px;">
-                                <i class="${callIcon} fs-5"></i>
-                            </div>
-                            <div class="flex-grow-1">
-                                <div class="fw-semibold mb-1">${body}</div>
-                                <div class="small">
-                                    <span>${formatCallStatusLabel(status)}</span>
-                                    <span class="mx-1">•</span>
-                                    <span>${duration}</span>
-                                </div>
+                    <div class="call_history_card ${badgeClass}">
+                        <div class="call_history_card__icon">
+                            <i class="${callIcon}"></i>
+                        </div>
+                        <div class="call_history_card__content">
+                            <div class="call_history_card__title">${body}</div>
+                            <div class="call_history_card__meta">
+                                <span>${formatCallStatusLabel(status)}</span>
+                                <span>•</span>
+                                <span>${duration}</span>
                             </div>
                         </div>
                     </div>
                     <span class="time">${messageTime} · ${duration}</span>
-                    ${isMine ? `<a class="action dlt-message" href="javascript:void(0)" data-msgid="${historyMessage.id}"><i class="fas fa-trash"></i></a>` : ''}
                 </div>
             </div>
         `;

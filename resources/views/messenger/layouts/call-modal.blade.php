@@ -25,7 +25,10 @@
                     <button type="button" class="btn btn-danger decline-call px-4">Decline</button>
                 </div>
             </div>
-            <div class="modal-footer border-0 pt-0">
+            <div class="modal-footer border-0 pt-0 d-flex justify-content-between align-items-center gap-2">
+                <button type="button" class="btn btn-light toggle-screen-share d-none">
+                    <i class="fas fa-desktop me-2"></i>Share screen
+                </button>
                 <button type="button" class="btn btn-danger hangup-call px-4">Hang up</button>
             </div>
         </div>

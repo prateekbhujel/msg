@@ -34,3 +34,32 @@ window.Echo = new Echo({
     enabledTransports: ['ws', 'wss'],
     authEndpoint: `broadcasting/auth`, // Ensure auth endpoint points to the correct URL
 });
+
+function resolveAssetBaseUrl()
+{
+    const assetMeta = document.querySelector('meta[name="asset-url"]')?.getAttribute('content') || `${window.location.origin}/`;
+
+    return new URL(assetMeta, window.location.origin);
+}
+
+async function registerMessengerServiceWorker()
+{
+    if (!('serviceWorker' in navigator)) {
+        return null;
+    }
+
+    const assetBaseUrl = resolveAssetBaseUrl();
+    const swUrl = new URL('sw.js', assetBaseUrl).toString();
+    const scope = assetBaseUrl.pathname.endsWith('/') ? assetBaseUrl.pathname : `${assetBaseUrl.pathname}/`;
+
+    try {
+        const registration = await navigator.serviceWorker.register(swUrl, { scope });
+        window.__messengerServiceWorkerRegistration = registration;
+
+        return registration;
+    } catch (error) {
+        return null;
+    }
+}
+
+window.__messengerServiceWorkerRegistrationPromise = registerMessengerServiceWorker();

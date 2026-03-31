@@ -127,3 +127,32 @@ it('hangs up an active call and marks it ended', function () {
             && $event->fromId === $session->caller_id;
     });
 });
+
+it('marks unanswered ringing calls as missed without adding fake duration', function () {
+    Event::fake([CallSignal::class]);
+
+    $caller = User::factory()->create();
+    $callee = User::factory()->create();
+    $session = makeCallSession($caller, $callee, [
+        'created_at' => now()->subSeconds(4),
+        'updated_at' => now()->subSeconds(4),
+    ]);
+
+    $response = $this->actingAs($caller)->deleteJson(route('messenger.calls.hangup', ['session' => $session->uuid]));
+
+    $response->assertOk()
+        ->assertJsonPath('history_message.meta.status', 'missed')
+        ->assertJsonPath('history_message.meta.duration_seconds', 0);
+
+    $session->refresh();
+
+    expect($session->status)->toBe('missed');
+    expect($session->ended_at)->not->toBeNull();
+
+    Event::assertDispatched(CallSignal::class, function (CallSignal $event) use ($session) {
+        return $event->type === 'hangup'
+            && $event->session->uuid === $session->uuid
+            && $event->payload['history_message']['meta']['status'] === 'missed'
+            && (int) $event->payload['history_message']['meta']['duration_seconds'] === 0;
+    });
+});

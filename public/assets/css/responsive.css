@@ -479,4 +479,19 @@
         bottom: auto;
         top: calc(100% + 8px);
     }
+
+    .chat-theme-swatches {
+        gap: 8px;
+    }
+
+    .chat-theme-swatch {
+        width: 30px;
+        height: 30px;
+    }
+
+    .modal-footer .toggle-screen-share,
+    .modal-footer .hangup-call {
+        width: 100%;
+        justify-content: center;
+    }
 }

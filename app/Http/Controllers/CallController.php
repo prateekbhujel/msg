@@ -171,8 +171,8 @@ class CallController extends Controller
 
         $this->authorizeParticipant($session);
 
-        if ($session->status === 'ended') {
-            $historyMessage = $this->ensureHistoryMessage($session, 'ended');
+        if (in_array($session->status, ['ended', 'missed'], true)) {
+            $historyMessage = $this->ensureHistoryMessage($session, $session->status);
 
             return response()->json([
                 'ok' => true,
@@ -181,14 +181,17 @@ class CallController extends Controller
             ]);
         }
 
-        $durationSeconds = $this->callDurationSeconds($session);
+        $finalStatus = $session->accepted_at ? 'ended' : 'missed';
+        $durationSeconds = $finalStatus === 'ended' ? $this->callDurationSeconds($session) : 0;
+
         $session->update([
-            'status' => 'ended',
+            'status' => $finalStatus,
             'ended_at' => now(),
         ]);
 
-        $historyMessage = $this->ensureHistoryMessage($session, 'ended', [
+        $historyMessage = $this->ensureHistoryMessage($session, $finalStatus, [
             'duration_seconds' => $durationSeconds,
+            'ended_by_id' => $authId,
         ]);
 
         CallSignal::dispatch(
@@ -263,7 +266,8 @@ class CallController extends Controller
             'call_type' => $session->call_type,
             'status' => $status,
             'direction' => 'outgoing',
-            'started_at' => $session->accepted_at?->toIso8601String() ?: $session->created_at?->toIso8601String(),
+            'started_at' => $session->accepted_at?->toIso8601String(),
+            'accepted_at' => $session->accepted_at?->toIso8601String(),
             'ended_at' => $session->ended_at?->toIso8601String(),
             'duration_seconds' => $durationSeconds,
         ], $extraMeta);
@@ -287,6 +291,7 @@ class CallController extends Controller
             'ringing' => "Calling {$callType}...",
             'active' => "{$callType} call started",
             'declined' => "{$callType} call declined",
+            'missed' => "{$callType} call missed",
             default => $durationSeconds > 0
                 ? "{$callType} call ended • " . $this->formatDuration($durationSeconds)
                 : "{$callType} call ended",
@@ -295,7 +300,7 @@ class CallController extends Controller
 
     protected function callDurationSeconds(CallSession $session): int
     {
-        $startedAt = $session->accepted_at ?? $session->created_at;
+        $startedAt = $session->accepted_at;
         $endedAt = $session->ended_at ?? now();
 
         return $startedAt ? $startedAt->diffInSeconds($endedAt) : 0;

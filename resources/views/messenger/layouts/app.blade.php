@@ -11,10 +11,17 @@
         <meta name="auth_id" content="{{ auth()->user()->id }}">
         <meta name="asset-url" content="{{ asset('') }}">
         <meta name="webrtc-ice-servers" content='@json(config("services.webrtc.ice_servers"))'>
+        <meta name="theme-color" content="#2180f3">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-status-bar-style" content="default">
+        <meta name="apple-mobile-web-app-title" content="{{ config('app.name') }}">
+        <meta name="description" content="Real-time chat, voice notes, calls, groups, and shared media in one installable messenger.">
 
         
         <title>{{ config('app.name') }}</title>
     <link rel="icon" type="image/png" href="{{ asset('assets/images/icon.png') }}">
+    <link rel="manifest" href="{{ asset('manifest.webmanifest') }}">
+    <link rel="apple-touch-icon" href="{{ asset('pwa/icon-192.png') }}">
     <link rel="stylesheet" href="{{ asset('assets/css/all.min.css') }}">
     <link rel="stylesheet" href="{{ asset('assets/css/bootstrap.min.css') }}">
     <link rel="stylesheet" href="{{ asset('assets/css/slick.css') }}">

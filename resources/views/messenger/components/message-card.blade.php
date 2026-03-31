@@ -6,13 +6,11 @@
     $attachments = $message->attachmentItems();
     $messageType = $message->message_type ?? 'text';
     $callType = data_get($message->meta, 'call_type', 'video');
-    $callStatus = $message->callStatus();
-    $statusBadge = match ($callStatus) {
-        'active' => 'call_history_card--active',
-        'declined' => 'call_history_card--declined',
-        'ringing' => 'call_history_card--ringing',
-        default => 'call_history_card--ended',
-    };
+    $callStatus = $message->callStatusLabelForViewer($viewerId);
+    $callTitle = $message->callTitleForViewer($viewerId);
+    $callStatusKey = $message->callStatus();
+    $statusBadge = $message->callBadgeClass();
+    $callShowsDuration = $message->callShowsDuration();
     $callIcon = $callType === 'audio' ? 'fas fa-phone' : 'fas fa-video';
     $voiceAttachment = $message->primaryAttachment();
     $voiceUrl = $voiceAttachment ? asset($voiceAttachment['path']) : null;
@@ -55,11 +53,13 @@
                     <i class="{{ $callIcon }}"></i>
                 </div>
                 <div class="call_history_card__content">
-                    <div class="call_history_card__title">{{ $message->body }}</div>
+                    <div class="call_history_card__title">{{ $callTitle }}</div>
                     <div class="call_history_card__meta">
-                        <span>{{ ucfirst($callStatus) }}</span>
-                        <span>•</span>
-                        <span>{{ $message->callDurationLabel() }}</span>
+                        <span>{{ $callStatus }}</span>
+                        @if ($callShowsDuration)
+                            <span>•</span>
+                            <span>{{ $message->callDurationLabel() }}</span>
+                        @endif
                     </div>
                 </div>
             </div>
@@ -249,7 +249,12 @@
         @if (! $message->isCallMessage())
             <span class="time">{{ timeAgo($message->created_at) }}</span>
         @else
-            <span class="time">{{ timeAgo($message->created_at) }} · {{ $message->callDurationLabel() }}</span>
+            <span class="time">
+                {{ timeAgo($message->created_at) }}
+                @if ($callShowsDuration)
+                    · {{ $message->callDurationLabel() }}
+                @endif
+            </span>
         @endif
     </div>
 </div>

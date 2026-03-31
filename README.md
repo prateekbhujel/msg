@@ -1,125 +1,174 @@
-# Msg - "Your Lightweight Chat Buddy."
+# Msg
 
-## Overview
+Laravel 12 messenger with real-time chat, groups, voice notes, media sharing, WebRTC calls, reactions, replies, typing indicators, and installable PWA support.
 
-Msg is a lightweight messaging application built with Laravel. This application leverages websockets, Pusher.io, and Laravel Echo to provide real-time messaging features. Users can send messages, favorite other users, search for users, view user profile details within chats, and more. The application also supports sharing images, private messaging, and deleting own messages in private chats.
+## Highlights
 
-## Features
+- Real-time direct and group messaging with Laravel Echo / Pusher
+- Group creation with shared history and member sidebar
+- Voice notes with 2 minute cap, compact custom player, and duration labels
+- Multi-file uploads for images, video, audio, and documents
+- Replies, reactions, and typing indicators
+- WebRTC audio/video calls with:
+  - missed / not answered call states
+  - in-chat call history
+  - incoming call ringtone + browser notifications
+  - screen sharing during active video calls
+- Profile editing and username handles
+- Shared media gallery
+- Installable PWA shell with manifest + service worker
+- Local chat color themes with saved preference
+- Message-body encryption at rest through Laravel `Crypt`
 
-- **Real-Time Messaging**: Instant messaging with real-time updates using websockets and Pusher.io.
-- **User Presence**: See which users are online and their activity status.
-- **Message Status**: View read and delivered timestamps for messages.
-- **User Profiles**: Access detailed user profiles directly from the chat interface.
-- **Favorites**: Favorite users for quick access and better organization.
-- **Search**: Search for users to initiate new conversations easily.
-- **Image Sharing**: Share images within your conversations.
-- **Private Messaging**: Secure and private messaging between users.
-- **Delete Own Messages**: Users can delete their own messages in private chats.
-- **Bootstrap Templates**: Utilizes Bootstrap for responsive and modern UI components.
-- **jQuery and Custom CSS**: Enhances interactivity and custom styling.
+## Stack
 
-## Technologies Used
+- Laravel 12
+- PHP 8.2+
+- MySQL / MariaDB
+- Vite
+- jQuery
+- Bootstrap
+- Laravel Echo
+- Pusher-compatible websocket transport
+- WebRTC for calls
 
-- **Laravel 10**: The PHP framework used for building the application.
-- **Websockets**: For real-time communication.
-- **Pusher.io**: A service to handle websocket connections.
-- **Laravel Echo**: A Laravel library to work with websockets.
-- **Bootstrap**: For responsive, mobile-first front-end design.
-- **jQuery**: For DOM manipulation and interactivity.
-- **Custom CSS**: For additional styling specific to the application.
+## Local Setup
 
-## Installation
+1. Clone the repo
 
-Follow these steps to get a local copy of the project up and running.
+```bash
+git clone git@github.com:prateekbhujel/msg.git
+cd msg
+```
 
-1. **Clone the Repository**:
-   ```sh
-   git clone https://github.com/prateekbhujel/msg.git
-   cd msg
-   ```
+2. Install backend dependencies
 
-2. **Install Dependencies**:
-   Make sure you have [Composer](https://getcomposer.org/) installed, then run:
-   ```sh
-   composer install
-   ```
+```bash
+composer install
+```
 
-3. **Environment Configuration**:
-   Copy the example environment file and configure the environment variables.
-   ```sh
-   cp .env.example .env
-   ```
-   Update the `.env` file with your database and Pusher.io credentials.
+3. Install frontend dependencies
 
-4. **Generate Application Key**:
-   ```sh
-   php artisan key:generate
-   ```
+```bash
+npm install
+```
 
-5. **Run Migrations**:
-   ```sh
-   php artisan migrate
-   ```
+4. Create the environment file
 
-6. **Install Frontend Dependencies**:
-   Make sure you have [Node.js](https://nodejs.org/) installed, then run:
-   ```sh
-   npm install
-   npm run dev
-   ```
+```bash
+cp .env.example .env
+```
 
-7. **Start the Development Server**:
-   ```sh
-   php artisan serve //please read the note below
-   ```
+5. Configure at minimum:
 
-8. **Run Websockets Server**:
-   ```sh
-   php artisan websockets:serve
-   ```
+```env
+APP_NAME="Msg"
+APP_URL=http://localhost/msg
 
-## Usage
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=msg
+DB_USERNAME=root
+DB_PASSWORD=
 
-- **Messaging**: Start chatting with other users by searching for their profiles or selecting from your favorites.
-- **Favorites**: Click the star icon to favorite a user and access them quickly from your favorites list.
-- **User Profiles**: Click on a user's name in the chat to view their profile details.
-- **Image Sharing**: Use the image upload button in the chat interface to share images.
-- **Private Messaging**: Send secure messages that are only visible to the recipient.
-- **Delete Own Messages**: In private chats, users can delete their own messages by clicking the delete icon next to the message.
+BROADCAST_CONNECTION=pusher
+PUSHER_APP_ID=
+PUSHER_APP_KEY=
+PUSHER_APP_SECRET=
+PUSHER_APP_CLUSTER=mt1
 
-## Customization
+VITE_PUSHER_APP_KEY="${PUSHER_APP_KEY}"
+VITE_PUSHER_APP_CLUSTER="${PUSHER_APP_CLUSTER}"
 
-- **Bootstrap Templates**: The application uses Bootstrap for its UI components. You can customize the Bootstrap templates by modifying the HTML files in the `resources/views` directory.
-- **jQuery and Custom CSS**: Additional interactivity and styling can be added or modified by editing the `public/js` and `public/css` directories respectively.
+# Optional: custom STUN/TURN
+WEBRTC_ICE_SERVERS=[{"urls":"stun:stun.l.google.com:19302"}]
+```
 
-## Contributing
+6. Generate the app key and migrate
 
-We welcome contributions to improve Msg. Please follow these steps to contribute:
+```bash
+php artisan key:generate
+php artisan migrate
+```
 
-1. Fork the repository.
-2. Create a new branch for your feature or bugfix.
-   ```sh
-   git checkout -b feature-name
-   ```
-3. Make your changes.
-4. Commit your changes.
-   ```sh
-   git commit -m "Description of your changes"
-   ```
-5. Push to your branch.
-   ```sh
-   git push origin feature-name
-   ```
-6. Open a pull request describing your change.
+7. Run the app
 
-## Acknowledgements
+```bash
+npm run dev
+```
 
-- [Laravel](https://laravel.com/)
-- [Pusher](https://pusher.com/)
-- [Laravel Echo](https://laravel.com/docs/10.x/broadcasting#installing-laravel-echo)
-- [Bootstrap](https://getbootstrap.com/)
-- [jQuery](https://jquery.com/)
+Serve the project through your local web server/XAMPP path, or use:
 
+```bash
+php artisan serve
+```
+
+## Production Build
+
+```bash
+npm run build
+composer install --no-dev --optimize-autoloader
+php artisan migrate --force
+php artisan optimize:clear
+```
+
+## PWA
+
+The messenger now ships with:
+
+- `public/manifest.webmanifest`
+- `public/sw.js`
+- installable app metadata
+- home-screen / desktop install support on supported browsers
+
+Note:
+- incoming call system notifications work when the page is open and notification permission is granted
+- true closed-browser push calling still needs a dedicated push service layer
+
+## Calls
+
+Call history states currently support:
+
+- ringing
+- connected
+- declined
+- missed / not answered
+- ended with duration
+
+Screen sharing is available in active video calls on browsers that support `getDisplayMedia`.
+
+## Security Notes
+
+- Message bodies are encrypted at rest in the database using Laravel `Crypt`
+- WebRTC media is encrypted in transit by the browser stack
+- This is not yet full client-side end-to-end encryption with key exchange
+
+## Testing
+
+```bash
+php artisan test --testsuite=Feature --stop-on-failure
+npm run build
+```
+
+## Deployment Notes
+
+This project is currently deployed on cPanel/shared hosting.
+
+Typical deploy flow:
+
+```bash
+npm run build
+composer install --no-dev --optimize-autoloader
+php artisan migrate --force
+php artisan optimize:clear
+```
+
+If the host worktree is dirty, sync changed files and `public/build` assets carefully instead of forcing a pull.
 
 ## Important
- -- *Note* this app is designed to run without a php artisan serve. So if you happen to use with php artisan serve, you will have to use the url provided by the server. i.e. Remove 'Public'--from related image and assets and also on user table migration remove public/ from the avatar field.
+
+- Uploaded runtime media is ignored through `.gitignore`
+- For shared hosting, make sure `public/uploads` is writable
+- Browser notifications require user permission
+- Group chat creation is available from the left sidebar top action

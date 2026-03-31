@@ -29,6 +29,17 @@ var knownGroupConversationKeys = new Set();
 
 const VOICE_RECORDING_MAX_SECONDS = 120;
 const REACTION_OPTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
+const CHAT_THEME_STORAGE_KEY = 'messenger.theme.primary';
+const CHAT_THEME_LIGHT_STORAGE_KEY = 'messenger.theme.light';
+const CHAT_THEME_RGB_STORAGE_KEY = 'messenger.theme.rgb';
+const COMPOSER_EMOJI_SHORTCUTS = [
+    { pattern: /(^|\s):\)(?=\s|$)/g, replacement: '$1🙂' },
+    { pattern: /(^|\s):\((?=\s|$)/g, replacement: '$1🙁' },
+    { pattern: /(^|\s);\)(?=\s|$)/g, replacement: '$1😉' },
+    { pattern: /(^|\s):D(?=\s|$)/g, replacement: '$1😄' },
+    { pattern: /(^|\s):P(?=\s|$)/gi, replacement: '$1😛' },
+    { pattern: /(^|\s)<3(?=\s|$)/g, replacement: '$1❤️' },
+];
 
 const messageForm             = $(".message-form"),
       messageInput            = $(".message-input"),
@@ -52,7 +63,8 @@ const messageForm             = $(".message-form"),
       voiceRecordToggleIcon   = $(".voice-record-toggle i"),
       emojiTriggerButton      = $(".composer-emoji-trigger"),
       typingIndicatorLabel    = $(".messenger-typing-indicator"),
-      createGroupForm         = $(".create-group-form");
+      createGroupForm         = $(".create-group-form"),
+      themeSwatches           = $("[data-chat-theme-color]");
 
 const getMessengerId          = () => {
     const conversationKey = getConversationKey();
@@ -133,6 +145,64 @@ function formatDurationSeconds(seconds)
     return `${minutes}:${String(remainingSeconds).padStart(2, '0')}`;
 }
 
+function hexToRgbString(hexColor)
+{
+    const normalized = String(hexColor || '').trim().replace('#', '');
+
+    if (!/^[\da-f]{6}$/i.test(normalized)) {
+        return '';
+    }
+
+    return [
+        parseInt(normalized.slice(0, 2), 16),
+        parseInt(normalized.slice(2, 4), 16),
+        parseInt(normalized.slice(4, 6), 16),
+    ].join(', ');
+}
+
+function setDocumentThemeColor(color)
+{
+    $('meta[name=theme-color]').attr('content', color || '#2180f3');
+}
+
+function applyChatTheme(primaryColor = '#2180f3', lightColor = '#ecf5ff')
+{
+    const rgbValue = hexToRgbString(primaryColor) || '33, 128, 243';
+
+    document.documentElement.style.setProperty('--colorPrimary', primaryColor);
+    document.documentElement.style.setProperty('--colorLightBg', lightColor);
+    document.documentElement.style.setProperty('--colorPrimaryRgb', rgbValue);
+    setDocumentThemeColor(primaryColor);
+
+    themeSwatches.removeClass('is-active');
+    themeSwatches.filter(`[data-chat-theme-color="${primaryColor}"]`).addClass('is-active');
+}
+
+function loadStoredChatTheme()
+{
+    try {
+        const primaryColor = window.localStorage.getItem(CHAT_THEME_STORAGE_KEY) || '#2180f3';
+        const lightColor = window.localStorage.getItem(CHAT_THEME_LIGHT_STORAGE_KEY) || '#ecf5ff';
+
+        applyChatTheme(primaryColor, lightColor);
+    } catch (error) {
+        applyChatTheme();
+    }
+}
+
+function saveChatTheme(primaryColor, lightColor)
+{
+    try {
+        window.localStorage.setItem(CHAT_THEME_STORAGE_KEY, primaryColor);
+        window.localStorage.setItem(CHAT_THEME_LIGHT_STORAGE_KEY, lightColor);
+        window.localStorage.setItem(CHAT_THEME_RGB_STORAGE_KEY, hexToRgbString(primaryColor) || '33, 128, 243');
+    } catch (error) {
+        // Ignore storage failures and still apply the theme in-memory.
+    }
+
+    applyChatTheme(primaryColor, lightColor);
+}
+
 function formatVoiceRecordingLabel(elapsedSeconds)
 {
     const safeElapsed = Math.max(0, Math.min(Number(elapsedSeconds || 0), VOICE_RECORDING_MAX_SECONDS));
@@ -187,6 +257,13 @@ function escapeHtml(value)
         .replaceAll("'", '&#039;');
 }
 
+function normalizeComposerEmojiShortcuts(value = '')
+{
+    return COMPOSER_EMOJI_SHORTCUTS.reduce((nextValue, shortcut) => {
+        return nextValue.replace(shortcut.pattern, shortcut.replacement);
+    }, String(value || ''));
+}
+
 function getComposerEmojiArea()
 {
     return messageInput.data('emojioneArea') || $("#example1").data('emojioneArea') || null;
@@ -224,6 +301,81 @@ function shouldSendFromComposer(event)
         && !event.metaKey
         && !event.altKey
         && !event.isComposing;
+}
+
+function maybeApplyComposerEmojiShortcuts()
+{
+    const currentValue = getComposerText();
+    const normalizedValue = normalizeComposerEmojiShortcuts(currentValue);
+
+    if (normalizedValue !== currentValue) {
+        setComposerText(normalizedValue);
+    }
+
+    return normalizedValue;
+}
+
+function callTypeLabel(callType = 'video')
+{
+    return callType === 'audio' ? 'Audio' : 'Video';
+}
+
+function resolveCallBadgeClass(status)
+{
+    return status === 'active'
+        ? 'call_history_card--active'
+        : status === 'declined'
+            ? 'call_history_card--declined'
+            : status === 'ringing'
+                ? 'call_history_card--ringing'
+                : status === 'missed'
+                    ? 'call_history_card--missed'
+                    : 'call_history_card--ended';
+}
+
+function callShowsDuration(meta = {})
+{
+    const status = String(meta?.status || 'ended');
+    const duration = Number(meta?.duration_seconds || 0);
+
+    return duration > 0 && ['active', 'ended'].includes(status);
+}
+
+function formatCallStatusLabel(status, isOutgoing = false)
+{
+    switch (status) {
+    case 'ringing':
+        return isOutgoing ? 'Calling' : 'Incoming';
+    case 'active':
+        return 'Connected';
+    case 'declined':
+        return 'Declined';
+    case 'missed':
+        return isOutgoing ? 'Not answered' : 'Missed';
+    default:
+        return 'Ended';
+    }
+}
+
+function resolveCallTitle(messageLike = {}, viewerId = auth_id)
+{
+    const meta = messageLike?.meta || {};
+    const status = String(meta.status || 'ended');
+    const callType = callTypeLabel(meta.call_type || 'video');
+    const isOutgoing = Number(messageLike?.from_id || 0) === Number(viewerId);
+
+    switch (status) {
+    case 'ringing':
+        return isOutgoing ? `Calling ${callType}...` : `Incoming ${callType} call`;
+    case 'active':
+        return `${callType} call started`;
+    case 'declined':
+        return isOutgoing ? `${callType} call declined` : `Declined ${callType} call`;
+    case 'missed':
+        return isOutgoing ? `${callType} call not answered` : `Missed ${callType} call`;
+    default:
+        return `${callType} call ended`;
+    }
 }
 
 function toggleComposerState(className, active = false)
@@ -499,16 +651,20 @@ function renderMessageActionsMarkup({ messageId, canDelete = false, canInteract 
     `;
 }
 
-function renderCallHistoryCardMarkup({ body, callType = 'video', status = 'ended', duration = '0:00' } = {})
+function renderCallHistoryCardMarkup(messageLike = {})
 {
+    const meta = messageLike?.meta || {};
+    const callType = meta.call_type || 'video';
+    const status = String(meta.status || 'ended');
+    const isOutgoing = Number(messageLike?.from_id || 0) === Number(auth_id);
+    const duration = callShowsDuration(meta)
+        ? formatDurationSeconds(meta.duration_seconds || 0)
+        : '';
     const callIcon = callType === 'audio' ? 'fas fa-phone' : 'fas fa-video';
-    const badgeClass = status === 'active'
-        ? 'call_history_card--active'
-        : status === 'declined'
-            ? 'call_history_card--declined'
-            : status === 'ringing'
-                ? 'call_history_card--ringing'
-                : 'call_history_card--ended';
+    const badgeClass = resolveCallBadgeClass(status);
+    const metaMarkup = duration
+        ? `<span>${formatCallStatusLabel(status, isOutgoing)}</span><span>•</span><span>${duration}</span>`
+        : `<span>${formatCallStatusLabel(status, isOutgoing)}</span>`;
 
     return `
         <div class="call_history_card ${badgeClass}">
@@ -516,11 +672,9 @@ function renderCallHistoryCardMarkup({ body, callType = 'video', status = 'ended
                 <i class="${callIcon}"></i>
             </div>
             <div class="call_history_card__content">
-                <div class="call_history_card__title">${body}</div>
+                <div class="call_history_card__title">${escapeHtml(resolveCallTitle(messageLike))}</div>
                 <div class="call_history_card__meta">
-                    <span>${formatCallStatusLabel(status)}</span>
-                    <span>•</span>
-                    <span>${duration}</span>
+                    ${metaMarkup}
                 </div>
             </div>
         </div>
@@ -739,15 +893,6 @@ function guessAttachmentTypeFromFile(file)
     }
 
     return guessAttachmentTypeFromPath(file.name || '');
-}
-
-function formatCallStatusLabel(status)
-{
-    if (!status) {
-        return 'Ended';
-    }
-
-    return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
 function buildGalleryGroupId(messageId)
@@ -1209,20 +1354,16 @@ function renderReceivedMessageCard(e)
         : '';
 
     if (messageType === 'call') {
-        const callType = e?.meta?.call_type || 'video';
-        const status = e?.meta?.status || 'ended';
-        const duration = formatDurationSeconds(e?.meta?.duration_seconds || 0);
+        const duration = callShowsDuration(e?.meta || {})
+            ? formatDurationSeconds(e?.meta?.duration_seconds || 0)
+            : '';
+        const timeSuffix = duration ? ` · ${duration}` : '';
 
         return `
             <div class="wsus__single_chat_area message-card" data-id="${e.id}" data-message-type="call">
                 <div class="wsus__single_chat ${isMine ? 'chat_right' : ''}">
-                    ${renderCallHistoryCardMarkup({
-                        body: body || `${callType.charAt(0).toUpperCase()}${callType.slice(1)} call`,
-                        callType,
-                        status,
-                        duration,
-                    })}
-                    <span class="time">${messageTime} · ${duration}</span>
+                    ${renderCallHistoryCardMarkup(e)}
+                    <span class="time">${messageTime}${timeSuffix}</span>
                 </div>
             </div>
         `;
@@ -1324,7 +1465,7 @@ async function sendMessage()
         return;
     }
 
-    const inputValue = getComposerText();
+    const inputValue = maybeApplyComposerEmojiShortcuts();
     const hasAttachment = (attachmentInput[0]?.files?.length || 0) > 0;
     const hasVoiceCandidate = !!voiceRecordingBlob || voiceRecordingActive;
 
@@ -1692,6 +1833,29 @@ function setActiveConversation(conversationKey, options = {})
     setMessengerId(userId || '');
     updateSelectedContent(conversationKey);
     setHeaderConversationActions(type);
+}
+
+function openConversationFromQuery()
+{
+    const params = new URLSearchParams(window.location.search);
+    const conversationKey = String(params.get('conversation') || '').trim();
+
+    if (!/^(user|group):\d+$/.test(conversationKey)) {
+        return;
+    }
+
+    const conversationType = conversationKey.startsWith('group:') ? 'group' : 'user';
+    const userId = conversationType === 'user'
+        ? Number(conversationKey.split(':')[1] || 0)
+        : 0;
+
+    setActiveConversation(conversationKey, {
+        type: conversationType,
+        userId,
+    });
+    hideTypingIndicator();
+    Idinfo(conversationKey);
+    messageFormReset();
 }
 
 /** 
@@ -2341,10 +2505,12 @@ function removeUserId(id)
 */
 $(document).ready(function () 
 {   
+    loadStoredChatTheme();
     getContacts();;
     initializeCallManager();
     setHeaderConversationActions('group');
     hideTypingIndicator();
+    openConversationFromQuery();
 
     /**
      *  -------------------------------------------
@@ -2454,6 +2620,8 @@ $(document).ready(function ()
     $('body').on('keydown', '.emojionearea-editor', composerEnterHandler);
     messageInput.on('input', queueTypingIndicator);
     $('body').on('input keyup', '.emojionearea-editor', queueTypingIndicator);
+    messageInput.on('keyup', maybeApplyComposerEmojiShortcuts);
+    $('body').on('keyup', '.emojionearea-editor', maybeApplyComposerEmojiShortcuts);
 
     /**
      *  -------------------------------
@@ -2582,6 +2750,14 @@ $(document).ready(function ()
                 notyf.error(xhr?.responseJSON?.message || 'Unable to create the group right now.');
             }
         });
+    });
+
+    themeSwatches.on('click', function (e) {
+        e.preventDefault();
+        saveChatTheme(
+            String($(this).data('chatThemeColor') || '#2180f3'),
+            String($(this).data('chatThemeLight') || '#ecf5ff')
+        );
     });
 
     /** 

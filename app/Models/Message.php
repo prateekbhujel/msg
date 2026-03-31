@@ -209,6 +209,16 @@ class Message extends Model
         return (string) data_get($this->meta, 'status', 'ended');
     }
 
+    public function callType(): string
+    {
+        return (string) data_get($this->meta, 'call_type', 'video');
+    }
+
+    public function callTypeLabel(): string
+    {
+        return Str::ucfirst($this->callType());
+    }
+
     public function callDurationSeconds(): int
     {
         return (int) data_get($this->meta, 'duration_seconds', 0);
@@ -217,6 +227,50 @@ class Message extends Model
     public function callDurationLabel(): string
     {
         return $this->formatDurationLabel($this->callDurationSeconds());
+    }
+
+    public function callShowsDuration(): bool
+    {
+        return $this->callDurationSeconds() > 0
+            && in_array($this->callStatus(), ['active', 'ended'], true);
+    }
+
+    public function callBadgeClass(): string
+    {
+        return match ($this->callStatus()) {
+            'active' => 'call_history_card--active',
+            'declined' => 'call_history_card--declined',
+            'ringing' => 'call_history_card--ringing',
+            'missed' => 'call_history_card--missed',
+            default => 'call_history_card--ended',
+        };
+    }
+
+    public function callStatusLabelForViewer(int $viewerId): string
+    {
+        $isOutgoing = (int) $this->from_id === $viewerId;
+
+        return match ($this->callStatus()) {
+            'ringing' => $isOutgoing ? 'Calling' : 'Incoming',
+            'active' => 'Connected',
+            'declined' => 'Declined',
+            'missed' => $isOutgoing ? 'Not answered' : 'Missed',
+            default => 'Ended',
+        };
+    }
+
+    public function callTitleForViewer(int $viewerId): string
+    {
+        $isOutgoing = (int) $this->from_id === $viewerId;
+        $callTypeLabel = $this->callTypeLabel();
+
+        return match ($this->callStatus()) {
+            'ringing' => $isOutgoing ? "Calling {$callTypeLabel}..." : "Incoming {$callTypeLabel} call",
+            'active' => "{$callTypeLabel} call started",
+            'declined' => $isOutgoing ? "{$callTypeLabel} call declined" : "Declined {$callTypeLabel} call",
+            'missed' => $isOutgoing ? "{$callTypeLabel} call not answered" : "Missed {$callTypeLabel} call",
+            default => "{$callTypeLabel} call ended",
+        };
     }
 
     public function voiceNoteDurationSeconds(): int
@@ -320,19 +374,24 @@ class Message extends Model
     public function toggleReaction(string $emoji, int $userId): array
     {
         $emoji = trim($emoji);
-        $reactions = collect($this->reactionMap());
-        $userIds = collect($reactions->get($emoji, []));
+        $existingReactions = collect($this->reactionMap());
+        $hadSelectedEmoji = collect($existingReactions->get($emoji, []))->contains($userId);
+        $reactions = $existingReactions
+            ->map(function (array $userIds) use ($userId) {
+                return collect($userIds)
+                    ->reject(fn ($id) => (int) $id === $userId)
+                    ->values()
+                    ->all();
+            })
+            ->filter(fn (array $userIds) => ! empty($userIds));
 
-        if ($userIds->contains($userId)) {
-            $userIds = $userIds->reject(fn ($id) => (int) $id === $userId)->values();
-        } else {
-            $userIds->push($userId);
-        }
-
-        if ($userIds->isEmpty()) {
-            $reactions->forget($emoji);
-        } else {
-            $reactions->put($emoji, $userIds->map(fn ($id) => (int) $id)->unique()->values()->all());
+        if (! $hadSelectedEmoji) {
+            $reactions->put($emoji, collect($reactions->get($emoji, []))
+                ->push($userId)
+                ->map(fn ($id) => (int) $id)
+                ->unique()
+                ->values()
+                ->all());
         }
 
         $meta = $this->meta ?? [];
@@ -404,15 +463,16 @@ class Message extends Model
             : '';
 
         if ($this->isCallMessage()) {
-            $prefix = $this->from_id === $viewerId ? 'You ' : '';
-            $callType = ucfirst((string) data_get($this->meta, 'call_type', 'video'));
+            $isOutgoing = (int) $this->from_id === $viewerId;
+            $callType = strtolower($this->callTypeLabel());
             $status = $this->callStatus();
 
             return $senderPrefix . match ($status) {
-                'ringing' => $prefix . 'started a ' . strtolower($callType) . ' call',
-                'active' => $prefix . 'is on a ' . strtolower($callType) . ' call',
-                'declined' => $prefix . 'declined a ' . strtolower($callType) . ' call',
-                default => $prefix . 'ended a ' . strtolower($callType) . ' call' . ($this->callDurationSeconds() > 0 ? ' · ' . $this->callDurationLabel() : ''),
+                'ringing' => $isOutgoing ? "Calling {$callType}..." : "Incoming {$callType} call",
+                'active' => ($isOutgoing ? 'You started ' : 'Started ') . "a {$callType} call",
+                'declined' => $isOutgoing ? "{$callType} call was declined" : "Declined {$callType} call",
+                'missed' => $isOutgoing ? "{$callType} call was not answered" : "Missed {$callType} call",
+                default => ($isOutgoing ? 'You ended ' : 'Ended ') . "a {$callType} call" . ($this->callShowsDuration() ? ' · ' . $this->callDurationLabel() : ''),
             };
         }
 

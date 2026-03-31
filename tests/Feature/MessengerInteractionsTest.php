@@ -80,6 +80,31 @@ it('toggles direct message reactions for participants', function () {
     expect($message->fresh()->reactionMap())->toBe([]);
 });
 
+it('replaces the previous reaction when the same user picks a new emoji', function () {
+    $sender = User::factory()->create();
+    $recipient = User::factory()->create();
+
+    $message = Message::create([
+        'from_id' => $sender->id,
+        'to_id' => $recipient->id,
+        'body' => 'One reaction at a time please',
+        'message_type' => 'text',
+        'seen' => false,
+    ]);
+
+    $this->actingAs($recipient)->postJson(route('messenger.messages.react', $message), [
+        'emoji' => '🔥',
+    ])->assertOk();
+
+    $this->actingAs($recipient)->postJson(route('messenger.messages.react', $message), [
+        'emoji' => '❤️',
+    ])->assertOk()->assertJsonPath('reactions.0.emoji', '❤️');
+
+    expect($message->fresh()->reactionMap())->toBe([
+        '❤️' => [$recipient->id],
+    ]);
+});
+
 it('prevents reactions on call history messages', function () {
     $caller = User::factory()->create();
     $callee = User::factory()->create();

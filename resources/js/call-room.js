@@ -9,6 +9,7 @@ const MOBILE_CONTROL_IDLE_MS = 3000;
 const CALL_SYNC_CHANNEL = 'messenger-call-sync';
 const CALL_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '👏', '🎉', '🔥'];
 const PIP_POSITIONS = ['bottom-right', 'bottom-left', 'top-right', 'top-left'];
+const CALL_ROOM_NAVIGATION_DELAY_MS = 220;
 
 function parseJsonScript(id, fallback = null)
 {
@@ -183,6 +184,7 @@ class CallRoomApp
         this.callStartedAt = null;
         this.joiningRequest = null;
         this.activeSpeakerMonitors = new Map();
+        this.qualityMonitorTimer = null;
         this.broadcastChannel = typeof window.BroadcastChannel === 'function'
             ? new window.BroadcastChannel(CALL_SYNC_CHANNEL)
             : null;
@@ -191,6 +193,8 @@ class CallRoomApp
         this.mobileControlsVisible = true;
         this.pipPositionIndex = 0;
         this.dragState = null;
+        this.callEnding = false;
+        this.roomFinished = false;
         this.initialized = false;
     }
 
@@ -237,6 +241,27 @@ class CallRoomApp
     isVideoCall()
     {
         return String(this.session?.call_type || 'video') === 'video';
+    }
+
+    conversationKey()
+    {
+        return String(this.session?.conversation_key || '').trim();
+    }
+
+    isGroupConversation()
+    {
+        return this.conversationKey().startsWith('group:');
+    }
+
+    conversationId()
+    {
+        const conversationKey = this.conversationKey();
+
+        if (!conversationKey) {
+            return 0;
+        }
+
+        return sanitizeId(conversationKey.split(':')[1] || 0);
     }
 
     joinedParticipantIds()
@@ -286,14 +311,7 @@ class CallRoomApp
         });
 
         this.root.querySelector('[data-call-open-chat]')?.addEventListener('click', () => {
-            const conversationKey = String(this.session?.conversation_key || '').trim();
-            const targetUrl = new URL('messenger', this.assetUrl);
-
-            if (conversationKey) {
-                targetUrl.searchParams.set('conversation', conversationKey);
-            }
-
-            window.open(targetUrl.toString(), '_self');
+            this.navigateBackToChat(false);
         });
 
         this.root.querySelector('[data-local-pip-reposition]')?.addEventListener('click', (event) => {
@@ -379,10 +397,12 @@ class CallRoomApp
         const joinedIds = new Set(this.joinedParticipantIds());
         const remoteParticipants = participants.filter((participant) => participant.id !== this.authId);
         const primaryParticipant = remoteParticipants[0] || this.session?.caller || this.session?.callee;
-        const avatarUrl = resolveAssetUrl(this.assetUrl, primaryParticipant?.avatar || 'default/avatar.png');
-        const title = participants.length > 2
-            ? participants.map((participant) => participantName(participant)).join(', ')
-            : participantName(primaryParticipant);
+        const avatarUrl = resolveAssetUrl(this.assetUrl, this.session?.group?.avatar || primaryParticipant?.avatar || 'default/avatar.png');
+        const title = this.session?.group?.name
+            ? this.session.group.name
+            : participants.length > 2
+                ? participants.map((participant) => participantName(participant)).join(', ')
+                : participantName(primaryParticipant);
 
         if (this.identityAvatar) {
             this.identityAvatar.style.backgroundImage = `url("${avatarUrl}")`;
@@ -393,7 +413,7 @@ class CallRoomApp
         }
 
         if (this.emptyName) {
-            this.emptyName.textContent = participantName(primaryParticipant);
+            this.emptyName.textContent = this.session?.group?.name || participantName(primaryParticipant);
         }
 
         if (this.titleLabel) {
@@ -401,7 +421,7 @@ class CallRoomApp
         }
 
         if (this.overlayTitle) {
-            this.overlayTitle.textContent = participantName(primaryParticipant);
+            this.overlayTitle.textContent = this.session?.group?.name || participantName(primaryParticipant);
         }
 
         if (this.eyebrowLabel) {
@@ -495,6 +515,7 @@ class CallRoomApp
         this.stopRingCountdown();
         this.callStartedAt = this.callStartedAt || Date.now();
         this.startCallTimer();
+        this.startQualityMonitor();
         await this.syncPeerRoster();
         this.renderSessionSummary();
         this.showControlsTemporarily();
@@ -613,6 +634,80 @@ class CallRoomApp
         if (this.callTimer) {
             window.clearInterval(this.callTimer);
             this.callTimer = null;
+        }
+    }
+
+    startQualityMonitor()
+    {
+        if (this.qualityMonitorTimer) {
+            return;
+        }
+
+        const updateQuality = async () => {
+            const peers = Array.from(this.peers.values());
+
+            if (peers.length === 0) {
+                this.updateQualityBars(0);
+                return;
+            }
+
+            const rtts = [];
+
+            await Promise.all(peers.map(async (peer) => {
+                try {
+                    const stats = await peer.connection.getStats();
+
+                    stats.forEach((report) => {
+                        if (
+                            report.type === 'candidate-pair'
+                            && report.state === 'succeeded'
+                            && typeof report.currentRoundTripTime === 'number'
+                        ) {
+                            rtts.push(report.currentRoundTripTime * 1000);
+                        }
+                    });
+                } catch (error) {
+                    // Connection quality is informational and should not disrupt the call.
+                }
+            }));
+
+            if (rtts.length === 0) {
+                this.updateQualityBars(0);
+                return;
+            }
+
+            const averageRtt = rtts.reduce((sum, value) => sum + value, 0) / rtts.length;
+            const bars = averageRtt < 80
+                ? 4
+                : averageRtt < 150
+                    ? 3
+                    : averageRtt < 300
+                        ? 2
+                        : 1;
+
+            this.updateQualityBars(bars);
+        };
+
+        updateQuality().catch(() => {});
+        this.qualityMonitorTimer = window.setInterval(() => {
+            updateQuality().catch(() => {});
+        }, 3000);
+    }
+
+    stopQualityMonitor()
+    {
+        if (this.qualityMonitorTimer) {
+            window.clearInterval(this.qualityMonitorTimer);
+            this.qualityMonitorTimer = null;
+        }
+
+        this.updateQualityBars(0);
+    }
+
+    updateQualityBars(bars)
+    {
+        for (let index = 1; index <= 4; index += 1) {
+            this.root.querySelector(`[data-quality-bar="${index}"]`)?.classList.toggle('is-active', index <= bars);
         }
     }
 
@@ -812,6 +907,10 @@ class CallRoomApp
     async handleSessionSignal(event)
     {
         if (!event?.session?.uuid || event.session.uuid !== this.session.uuid) {
+            return;
+        }
+
+        if (this.roomFinished) {
             return;
         }
 
@@ -1320,6 +1419,12 @@ class CallRoomApp
 
     async endCall(silent = false)
     {
+        if (this.callEnding || this.roomFinished) {
+            return;
+        }
+
+        this.callEnding = true;
+
         try {
             await axios.delete(route('messenger.calls.hangup', { session: this.session.uuid }), {
                 data: {
@@ -1333,15 +1438,23 @@ class CallRoomApp
             if (!silent) {
                 notify('error', error?.response?.data?.message || 'Unable to end the call cleanly.');
             }
+        } finally {
+            this.finishRoom('Call ended.', {
+                navigate: true,
+            });
         }
-
-        this.finishRoom('Call ended.');
     }
 
-    finishRoom(message)
+    finishRoom(message, { navigate = true } = {})
     {
+        if (this.roomFinished) {
+            return;
+        }
+
+        this.roomFinished = true;
         this.stopRingCountdown();
         this.stopCallTimer();
+        this.stopQualityMonitor();
         this.releaseWakeLock().catch(() => {});
         document.body.classList.remove('call-room-active');
         this.updateOverlayCopy(message);
@@ -1352,9 +1465,73 @@ class CallRoomApp
         });
 
         this.peers.forEach((_, peerId) => this.cleanupPeer(peerId));
-        this.localAudioStream?.getTracks?.().forEach((track) => track.stop());
-        this.localCameraStream?.getTracks?.().forEach((track) => track.stop());
-        this.screenShareStream?.getTracks?.().forEach((track) => track.stop());
+        this.stopStream(this.localPreviewStream);
+        this.localPreviewStream = null;
+        this.stopStream(this.localAudioStream);
+        this.localAudioStream = null;
+        this.stopStream(this.localCameraStream);
+        this.localCameraStream = null;
+        this.stopStream(this.screenShareStream);
+        this.screenShareStream = null;
+        this.callEnding = false;
+
+        if (navigate) {
+            window.setTimeout(() => {
+                this.navigateBackToChat();
+            }, CALL_ROOM_NAVIGATION_DELAY_MS);
+        }
+    }
+
+    stopStream(stream)
+    {
+        if (!stream?.getTracks) {
+            return;
+        }
+
+        stream.getTracks().forEach((track) => {
+            try {
+                track.stop();
+            } catch (error) {
+                // Track teardown is best-effort during call shutdown.
+            }
+        });
+    }
+
+    navigateBackToChat(shouldCloseTab = true)
+    {
+        const conversationKey = this.conversationKey();
+        const isGroup = this.isGroupConversation();
+        const conversationId = this.conversationId();
+
+        if (window.opener && !window.opener.closed) {
+            try {
+                window.opener.postMessage({
+                    type: 'call_ended',
+                    conversationKey,
+                    conversationId,
+                    isGroup,
+                }, window.location.origin);
+            } catch (error) {
+                // Ignore opener messaging failures and fall back to redirect.
+            }
+
+            if (shouldCloseTab) {
+                try {
+                    window.close();
+                    return;
+                } catch (error) {
+                    // Redirect below if the browser blocks window.close().
+                }
+            }
+        }
+
+        const targetUrl = new URL('messenger', this.assetUrl);
+
+        if (conversationKey) {
+            targetUrl.searchParams.set('conversation', conversationKey);
+        }
+
+        window.location.href = targetUrl.toString();
     }
 
     updateControlStates()

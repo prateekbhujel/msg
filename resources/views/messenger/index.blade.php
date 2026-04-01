@@ -27,8 +27,30 @@
                     <a href="javascript:void(0)" class="favourite"><i class="fas fa-star"></i></a>
                     <a href="javascript:void(0)" class="call-action start-call" data-call-type="audio" title="Audio call"><i class="fas fa-phone"></i></a>
                     <a href="javascript:void(0)" class="call-action start-call" data-call-type="video" title="Video call"><i class="fas fa-video"></i></a>
+                    <a href="javascript:void(0)" class="conversation-search-toggle" title="Search in conversation"><i class="fas fa-search"></i></a>
+                    <div class="dropdown">
+                        <a href="javascript:void(0)" class="conversation-disappear-toggle" data-bs-toggle="dropdown" title="Disappearing messages">
+                            <i class="fas fa-fire"></i>
+                        </a>
+                        <div class="dropdown-menu conversation-disappear-menu">
+                            <button type="button" class="dropdown-item conversation-disappear-option active" data-disappear-after="off">Disappearing off</button>
+                            <button type="button" class="dropdown-item conversation-disappear-option" data-disappear-after="24h">Disappear after 24h</button>
+                            <button type="button" class="dropdown-item conversation-disappear-option" data-disappear-after="7d">Disappear after 7d</button>
+                        </div>
+                    </div>
                     <a href="javascript:void(0)" class="info"><i class="fas fa-info-circle"></i></a>
                 </div>
+            </div>
+
+            <div class="conversation-search-panel d-none">
+                <div class="conversation-search-panel__input">
+                    <i class="fas fa-search"></i>
+                    <input type="text" class="conversation-search-input" placeholder="Search in this conversation">
+                    <button type="button" class="conversation-search-close" aria-label="Close search">
+                        <i class="far fa-times-circle"></i>
+                    </button>
+                </div>
+                <div class="conversation-search-results d-none"></div>
             </div>
  
             <div class="wsus__chat_area_body">
@@ -50,6 +72,7 @@
                         <div class="attachment-preview-list"></div>
                     </div>
                     <div class="composer-meta">
+                        <div id="smart-reply-chips" class="smart-reply-chips d-none"></div>
                         <div class="composer-reply-preview d-none">
                             <div class="composer-reply-preview__copy">
                                 <span class="composer-reply-preview__label">Replying</span>
@@ -83,6 +106,7 @@
                             </button>
                         </div>
                         <textarea class="message-input" id="example1" rows="1" placeholder="Type a message.." name="message"></textarea>
+                        <span id="tone-dot" data-tone=""></span>
                         <button type="submit" class="message-send-button" aria-label="Send message"><i class="fas fa-paper-plane"></i></button>
                     </form>
                     <div class="composer-emoji-popover d-none" data-composer-emoji-popover></div>

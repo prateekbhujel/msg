@@ -56,6 +56,15 @@ class CallRoomController extends Controller
                 'participant_ids' => $session->participantIds(),
                 'joined_participant_ids' => $joinedParticipantIds,
                 'group_call_id' => $session->uuid,
+                'is_group' => (bool) data_get($session->meta, 'is_group', false),
+                'group' => data_get($session->meta, 'is_group')
+                    ? [
+                        'id' => (int) data_get($session->meta, 'group_id', 0),
+                        'name' => data_get($session->meta, 'group_name'),
+                        'avatar' => data_get($session->meta, 'group_avatar', 'default/avatar.png'),
+                        'member_count' => (int) data_get($session->meta, 'group_member_count', count($session->participantIds())),
+                    ]
+                    : null,
                 'caller' => [
                     'id' => $session->caller?->id ? (int) $session->caller->id : null,
                     'name' => $session->caller?->name,

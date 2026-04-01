@@ -59,6 +59,10 @@ Route::group(['middleware' => 'auth'], function() {
 
     //Send Message
     Route::post('messenger/send-message', [MessengerController::class,'sendMessage'])->name('messenger.send-message');  
+    Route::post('messenger/smart-reply', [MessengerController::class, 'smartReply'])->name('messenger.smart-reply');
+    Route::post('messenger/message-tone', [MessengerController::class, 'analyzeTone'])->name('messenger.message-tone');
+    Route::post('messenger/conversation-search', [MessengerController::class, 'searchConversation'])->name('messenger.conversation-search');
+    Route::post('messenger/conversation-disappearing', [MessengerController::class, 'updateDisappearingMessages'])->name('messenger.conversation-disappearing');
 
     //Fetchs Messages of Selected User
     Route::get('messenger/fetch-messages', [MessengerController::class, 'fetchMessages'])->name('messenger.fetch-messages');

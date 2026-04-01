@@ -498,6 +498,12 @@
 
     .incoming-call-modal {
         align-items: flex-end;
+        justify-content: stretch;
+        padding:
+            max(env(safe-area-inset-top), 12px)
+            max(env(safe-area-inset-right), 0px)
+            0
+            max(env(safe-area-inset-left), 0px);
     }
 
     .incoming-call-modal__sheet {
@@ -505,6 +511,10 @@
         max-width: none;
         margin: 0;
         border-radius: 28px 28px 0 0;
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
         padding:
             14px
             16px
@@ -526,6 +536,32 @@
 
     .incoming-call-modal__actions {
         grid-template-columns: 1fr;
+    }
+
+    .msg-tab-bar {
+        padding: 8px 10px 0;
+        gap: 6px;
+    }
+
+    .msg-tab {
+        border-radius: 16px;
+        padding: 9px 8px 8px;
+    }
+
+    .group-card,
+    .active-user-item {
+        padding: 12px;
+        border-radius: 20px;
+    }
+
+    .group-card {
+        grid-template-columns: 1fr;
+    }
+
+    .group-card__actions,
+    .user-quick-actions {
+        width: 100%;
+        justify-content: flex-start;
     }
 
     .call-screen__header {

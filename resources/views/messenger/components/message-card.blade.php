@@ -34,6 +34,8 @@
     $reactionSummary = $message->reactionSummary($viewerId);
     $reactionOptions = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
     $showSenderLabel = $message->isGroupMessage() && ! $isMine && ! $message->isCallMessage();
+    $displayBody = $message->displayBody();
+    $languageBadge = $message->languageBadge();
 @endphp
 
 <div
@@ -75,8 +77,12 @@
                 </button>
             @endif
 
-            @if ($message->body)
-                <p class="messages">{{ $message->body }}</p>
+            @if ($languageBadge)
+                <span class="message-language-badge" title="Detected language">{{ $languageBadge }}</span>
+            @endif
+
+            @if ($displayBody)
+                <p class="messages">{{ $displayBody }}</p>
             @endif
 
             @if ($message->isVoiceMessage())
@@ -87,7 +93,7 @@
                     <div class="flex-grow-1 min-w-0">
                         <div class="voice-note-head">
                             <div class="min-w-0">
-                                <div class="voice-note-title">{{ $message->body ?: 'Voice note' }}</div>
+                                <div class="voice-note-title">{{ $displayBody ?: 'Voice note' }}</div>
                                 <div class="voice-note-subtitle">{{ $voiceSubtitle }}</div>
                             </div>
                             <div class="voice-note-wave voice-note-wave--compact" aria-hidden="true">

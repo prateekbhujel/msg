@@ -35,6 +35,14 @@ body.call-room-page .call-room {
     gap: 16px;
 }
 
+.call-room__topbar-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
 .call-room__identity {
     display: flex;
     align-items: center;
@@ -112,6 +120,50 @@ body.call-room-page .call-room {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+}
+
+.call-room__quality {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.34);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+}
+
+.call-room__quality-label {
+    color: rgba(226, 232, 240, 0.82);
+    font-size: 0.76rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.call-room__quality-bars {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 4px;
+    height: 18px;
+}
+
+.call-room__quality-bar {
+    width: 4px;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.35);
+    transition: background .2s ease, box-shadow .2s ease, opacity .2s ease;
+}
+
+.call-room__quality-bar:nth-child(1) { height: 6px; }
+.call-room__quality-bar:nth-child(2) { height: 9px; }
+.call-room__quality-bar:nth-child(3) { height: 12px; }
+.call-room__quality-bar:nth-child(4) { height: 15px; }
+
+.call-room__quality-bar.is-active {
+    background: #4ade80;
+    box-shadow: 0 0 12px rgba(74, 222, 128, 0.35);
 }
 
 .call-room__stage {
@@ -583,6 +635,7 @@ body.call-room-page .call-room {
     .call-room__topbar-actions {
         display: flex;
         justify-content: flex-end;
+        gap: 8px;
     }
 
     .call-room__stage {

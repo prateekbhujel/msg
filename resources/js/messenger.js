@@ -30,12 +30,14 @@ var typingIndicatorHideTimer = null;
 var knownGroupConversationKeys = new Set();
 var composerEmojiPicker = null;
 var composerEmojiPickerVisible = false;
+var activeUsersMap = new Map();
 
 const VOICE_RECORDING_MAX_SECONDS = 120;
 const REACTION_OPTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
 const CHAT_THEME_STORAGE_KEY = 'messenger.theme.primary';
 const CHAT_THEME_LIGHT_STORAGE_KEY = 'messenger.theme.light';
 const CHAT_THEME_RGB_STORAGE_KEY = 'messenger.theme.rgb';
+const LAST_CONVERSATION_STORAGE_KEY = 'msg_last_conversation';
 const COMPOSER_EMOJI_SHORTCUTS = [
     { pattern: /(^|\s):\)(?=\s|$)/g, replacement: '$1😊' },
     { pattern: /(^|\s):\((?=\s|$)/g, replacement: '$1😢' },
@@ -49,6 +51,10 @@ const COMPOSER_EMOJI_SHORTCUTS = [
     { pattern: /(^|\s)>\:\((?=\s|$)/g, replacement: '$1😠' },
     { pattern: /(^|\s):\*(?=\s|$)/g, replacement: '$1😘' },
     { pattern: /(^|\s)<3(?=\s|$)/g, replacement: '$1❤️' },
+    { pattern: /(^|\s)\^_\^(?=\s|$)/g, replacement: '$1😊' },
+    { pattern: /(^|\s)-_-(?=\s|$)/g, replacement: '$1😑' },
+    { pattern: /(^|\s)o_O(?=\s|$)/g, replacement: '$1🤨' },
+    { pattern: /(^|\s):3(?=\s|$)/g, replacement: '$1🥺' },
 ];
 
 const messageForm             = $(".message-form"),
@@ -58,6 +64,8 @@ const messageForm             = $(".message-form"),
       auth_id                 = $("meta[name=auth_id]").attr("content"),
       assetUrl                = $("meta[name=asset-url]").attr("content") || `${window.location.origin}/`,
       messengerContactBox     = $(".messenger-contacts"),
+      messengerGroupBox       = $(".messenger-groups"),
+      messengerActiveBox      = $(".messenger-active-users"),
       composerShell           = $(".footer_message"),
       attachmentInput         = $(".attachment-input"),
       attachmentPreviewBlock  = $(".attachment-block"),
@@ -75,7 +83,17 @@ const messageForm             = $(".message-form"),
       composerEmojiPopover    = $("[data-composer-emoji-popover]"),
       typingIndicatorLabel    = $(".messenger-typing-indicator"),
       createGroupForm         = $(".create-group-form"),
-      themeSwatches           = $("[data-chat-theme-color]");
+      smartReplyChips         = $("#smart-reply-chips"),
+      toneDot                 = $("#tone-dot"),
+      conversationSearchPanel = $(".conversation-search-panel"),
+      conversationSearchInput = $(".conversation-search-input"),
+      conversationSearchResults = $(".conversation-search-results"),
+      conversationDisappearOptions = $(".conversation-disappear-option"),
+      themeSwatches           = $("[data-chat-theme-color]"),
+      messengerTabButtons     = $(".msg-tab"),
+      messengerTabPanes       = $(".msg-tab-pane"),
+      groupsUnreadBadge       = $("#groups-unread-badge"),
+      activeUsersBadge        = $("#active-users-badge");
 
 const getMessengerId          = () => {
     const conversationKey = getConversationKey();
@@ -214,6 +232,169 @@ function saveChatTheme(primaryColor, lightColor)
     applyChatTheme(primaryColor, lightColor);
 }
 
+function persistActiveConversation(conversationKey, options = {})
+{
+    if (!conversationKey) {
+        return;
+    }
+
+    try {
+        window.localStorage.setItem(LAST_CONVERSATION_STORAGE_KEY, JSON.stringify({
+            key: conversationKey,
+            type: options.type || (conversationKey.startsWith('group:') ? 'group' : 'user'),
+            userId: Number(options.userId || 0),
+            groupId: Number(options.groupId || 0),
+        }));
+    } catch (error) {
+        // Ignore storage failures and keep the active chat in memory.
+    }
+}
+
+function readStoredConversation()
+{
+    try {
+        const raw = window.localStorage.getItem(LAST_CONVERSATION_STORAGE_KEY);
+
+        if (!raw) {
+            return null;
+        }
+
+        const parsed = JSON.parse(raw);
+        const conversationKey = String(parsed?.key || '').trim();
+
+        if (!/^(user|group):\d+$/.test(conversationKey)) {
+            return null;
+        }
+
+        return {
+            key: conversationKey,
+            type: String(parsed?.type || (conversationKey.startsWith('group:') ? 'group' : 'user')),
+            userId: Number(parsed?.userId || 0),
+            groupId: Number(parsed?.groupId || 0),
+        };
+    } catch (error) {
+        return null;
+    }
+}
+
+function switchMessengerTab(tabName = 'dms')
+{
+    messengerTabButtons.removeClass('active');
+    messengerTabButtons.filter(`[data-tab="${tabName}"]`).addClass('active');
+
+    messengerTabPanes.removeClass('active');
+    $(`#tab-${tabName}`).addClass('active');
+}
+
+function updateSidebarBadges({ groupUnread = null, activeCount = null } = {})
+{
+    if (groupUnread !== null && groupsUnreadBadge.length) {
+        groupsUnreadBadge.text(groupUnread > 99 ? '99+' : String(groupUnread));
+        groupsUnreadBadge.css('display', groupUnread > 0 ? 'inline-flex' : 'none');
+    }
+
+    if (activeCount !== null && activeUsersBadge.length) {
+        activeUsersBadge.text(activeCount > 99 ? '99+' : String(activeCount));
+        activeUsersBadge.css('display', activeCount > 0 ? 'inline-flex' : 'none');
+    }
+}
+
+function countOnlineGroupMembers(memberIds = [])
+{
+    return memberIds.filter((id) => activeUsersMap.has(Number(id))).length;
+}
+
+function refreshGroupOnlineState()
+{
+    messengerGroupBox.find('.group-card').each(function () {
+        const memberIds = String($(this).data('memberIds') || '')
+            .split(',')
+            .map((value) => Number(value))
+            .filter((value) => Number.isInteger(value) && value > 0);
+        const onlineCount = countOnlineGroupMembers(memberIds);
+
+        $(this).find('.group-online-count').text(`${onlineCount} active`);
+        $(this).find('.group-card__status-dot').toggleClass('d-none', onlineCount < 1);
+    });
+}
+
+function refreshSidebarBadgeCountsFromDom()
+{
+    const groupUnread = messengerGroupBox.find('.group-card__badge').toArray().reduce((sum, badge) => {
+        return sum + Number($(badge).text() || 0);
+    }, 0);
+
+    updateSidebarBadges({
+        groupUnread,
+        activeCount: activeUsersMap.size,
+    });
+}
+
+function renderActiveUsers(users = [])
+{
+    if (!messengerActiveBox.length) {
+        return;
+    }
+
+    if (!users.length) {
+        messengerActiveBox.html("<p class='text text-muted text-center mt-5 no_active_contact'>No one is online right now.</p>");
+        updateSidebarBadges({ activeCount: 0 });
+        return;
+    }
+
+    messengerActiveBox.html(users.map((user) => `
+        <div class="active-user-item" data-user-id="${user.id}">
+            <div class="avatar-wrap">
+                <img src="${resolveAssetUrl(user.avatar || 'default/avatar.png')}" class="user-avatar" alt="${escapeHtml(user.name || 'User')}">
+                <span class="online-badge"></span>
+            </div>
+            <div class="user-meta">
+                <span class="user-name">${escapeHtml(user.name || 'User')}</span>
+                <span class="user-handle text-muted">${escapeHtml(user.user_name || '')}</span>
+            </div>
+            <div class="user-quick-actions">
+                <button type="button" class="btn-icon quick-chat" data-user-id="${user.id}" title="Chat">
+                    <i class="far fa-comment-dots"></i>
+                </button>
+                <button type="button" class="btn-icon quick-call" data-user-id="${user.id}" data-call-type="audio" title="Call">
+                    <i class="fas fa-phone"></i>
+                </button>
+                <button type="button" class="btn-icon quick-video" data-user-id="${user.id}" data-call-type="video" title="Video">
+                    <i class="fas fa-video"></i>
+                </button>
+            </div>
+        </div>
+    `).join(''));
+
+    updateSidebarBadges({ activeCount: users.length });
+}
+
+function upsertActiveUser(user)
+{
+    if (!user?.id) {
+        return;
+    }
+
+    activeUsersMap.set(Number(user.id), {
+        id: Number(user.id),
+        name: user.name || 'User',
+        avatar: user.avatar || 'default/avatar.png',
+        user_name: user.user_name || '',
+    });
+
+    renderActiveUsers(Array.from(activeUsersMap.values()));
+    refreshGroupOnlineState();
+    refreshSidebarBadgeCountsFromDom();
+}
+
+function removeActiveUser(userId)
+{
+    activeUsersMap.delete(Number(userId));
+    renderActiveUsers(Array.from(activeUsersMap.values()));
+    refreshGroupOnlineState();
+    refreshSidebarBadgeCountsFromDom();
+}
+
 function formatVoiceRecordingLabel(elapsedSeconds)
 {
     const safeElapsed = Math.max(0, Math.min(Number(elapsedSeconds || 0), VOICE_RECORDING_MAX_SECONDS));
@@ -324,6 +505,40 @@ function maybeApplyComposerEmojiShortcuts()
     }
 
     return normalizedValue;
+}
+
+function normalizeDisplayEmojiShortcuts(value = '')
+{
+    return normalizeComposerEmojiShortcuts(value);
+}
+
+function detectLanguageBadge(messageLike = {})
+{
+    const storedLanguage = String(messageLike?.meta?.language || '').trim();
+    const text = String(messageLike?.body || '').toLowerCase();
+
+    if (storedLanguage === 'ne') {
+        return '🇳🇵';
+    }
+
+    if (storedLanguage === 'hi') {
+        return '🇮🇳';
+    }
+
+    const nepaliWords = ['dai', 'didi', 'hajur', 'tapai', 'kasari', 'kasto', 'ramro', 'thik', 'cha', 'haina', 'xaina', 'ho', 'bhayo'];
+    const hindiWords = ['kya', 'hai', 'nahi', 'aur', 'mera', 'tera', 'haan', 'toh', 'bhi', 'karo', 'kuch'];
+    const nepaliScore = nepaliWords.filter((word) => text.includes(word)).length;
+    const hindiScore = hindiWords.filter((word) => text.includes(word)).length;
+
+    if (nepaliScore >= 2) {
+        return '🇳🇵';
+    }
+
+    if (hindiScore >= 2) {
+        return '🇮🇳';
+    }
+
+    return '';
 }
 
 function callTypeLabel(callType = 'video')
@@ -523,6 +738,122 @@ function hideTypingIndicator()
     typingIndicatorLabel.addClass('d-none').text('');
 }
 
+function hideSmartReplies()
+{
+    smartReplyChips.empty().addClass('d-none');
+}
+
+function loadSmartReplies(messageText = '')
+{
+    const text = String(messageText || '').trim();
+
+    if (!text.length || !smartReplyChips.length) {
+        hideSmartReplies();
+        return;
+    }
+
+    $.ajax({
+        method: 'POST',
+        url: route('messenger.smart-reply'),
+        data: {
+            _token: csrf_token,
+            text,
+        },
+        success: function ({ suggestions = [] }) {
+            if (!Array.isArray(suggestions) || suggestions.length === 0) {
+                hideSmartReplies();
+                return;
+            }
+
+            smartReplyChips.html(suggestions.map((suggestion) => `
+                <button type="button" class="smart-reply-chip">${escapeHtml(suggestion)}</button>
+            `).join('')).removeClass('d-none');
+        },
+        error: function () {
+            hideSmartReplies();
+        }
+    });
+}
+
+function setToneIndicator(tone = '')
+{
+    toneDot.attr('data-tone', tone || '');
+}
+
+function refreshMessageTone()
+{
+    const text = maybeApplyComposerEmojiShortcuts().trim();
+
+    if (!text.length) {
+        setToneIndicator('');
+        return;
+    }
+
+    window.clearTimeout(refreshMessageTone.timer);
+    refreshMessageTone.timer = window.setTimeout(() => {
+        $.ajax({
+            method: 'POST',
+            url: route('messenger.message-tone'),
+            data: {
+                _token: csrf_token,
+                text,
+            },
+            success: function ({ tone = '' }) {
+                setToneIndicator(tone);
+            },
+            error: function () {
+                setToneIndicator('');
+            }
+        });
+    }, 320);
+}
+
+function setDisappearingState(value = 'off')
+{
+    const safeValue = ['off', '24h', '7d'].includes(value) ? value : 'off';
+
+    conversationDisappearOptions.removeClass('active');
+    conversationDisappearOptions.filter(`[data-disappear-after="${safeValue}"]`).addClass('active');
+    $('.conversation-disappear-toggle').toggleClass('is-active', safeValue !== 'off');
+}
+
+function searchConversation(query = '')
+{
+    const safeQuery = String(query || '').trim();
+    const conversationKey = getConversationKey();
+
+    if (!safeQuery.length || !conversationKey) {
+        conversationSearchResults.empty().addClass('d-none');
+        return;
+    }
+
+    $.ajax({
+        method: 'POST',
+        url: route('messenger.conversation-search'),
+        data: {
+            _token: csrf_token,
+            conversation_key: conversationKey,
+            q: safeQuery,
+        },
+        success: function ({ results = [] }) {
+            if (!Array.isArray(results) || results.length === 0) {
+                conversationSearchResults.html("<p class='conversation-search-empty'>No matches yet.</p>").removeClass('d-none');
+                return;
+            }
+
+            conversationSearchResults.html(results.map((result) => `
+                <button type="button" class="conversation-search-result" data-message-id="${result.id}">
+                    <span class="conversation-search-result__preview">${result.preview || ''}</span>
+                    <span class="conversation-search-result__time">${escapeHtml(formatTimestampLabel(result.created_at))}</span>
+                </button>
+            `).join('')).removeClass('d-none');
+        },
+        error: function () {
+            conversationSearchResults.html("<p class='conversation-search-empty'>Search is unavailable right now.</p>").removeClass('d-none');
+        }
+    });
+}
+
 function sendTypingState(active = true)
 {
     const conversationKey = getConversationKey();
@@ -708,6 +1039,17 @@ function renderReactionSummaryMarkup(messageId, reactions = [])
             `).join('')}
         </div>
     `;
+}
+
+function renderLanguageBadgeMarkup(messageLike = {})
+{
+    const badge = detectLanguageBadge(messageLike);
+
+    if (!badge) {
+        return '';
+    }
+
+    return `<span class="message-language-badge" title="Detected language">${badge}</span>`;
 }
 
 function renderMessageActionsMarkup({ messageId, canDelete = false, canInteract = true } = {})
@@ -1227,6 +1569,7 @@ function finishComposerSend({ clearText = true } = {})
     clearComposerAttachments();
     clearVoiceRecordingPreview();
     clearComposerReplyTarget();
+    hideSmartReplies();
     resetVoiceRecordingState();
     setComposerSendingState(false);
 
@@ -1430,12 +1773,17 @@ function renderReceivedMessageCard(e)
     const isGroupMessage = Number(e.group_id || 0) > 0;
     const canDelete = isMine && messageType !== 'call';
     const canInteract = messageType !== 'call';
-    const bodyText = typeof e.body === 'string' ? e.body.trim() : (e.body || '');
+    const normalizedBodyText = normalizeDisplayEmojiShortcuts(typeof e.body === 'string' ? e.body.trim() : (e.body || ''));
+    const bodyText = normalizedBodyText;
     const body = escapeHtml(bodyText);
     const messageTime = formatTimestampLabel(e.created_at);
     const replyPreview = e.reply_preview || null;
     const reactions = normalizeReactionSummary(e.reactions, e.reaction_map);
     const senderName = escapeHtml(e.from_name || 'Group member');
+    const languageBadgeMarkup = renderLanguageBadgeMarkup({
+        body: bodyText,
+        meta: e.meta || {},
+    });
     const replySnippetText = String(
         replyPreview?.snippet || bodyText || (messageType === 'voice' ? 'Voice note' : attachments.length ? 'Attachment' : 'Message')
     ).replace(/\s+/g, ' ').trim();
@@ -1477,6 +1825,7 @@ function renderReceivedMessageCard(e)
                 <div class="wsus__single_chat ${isMine ? 'chat_right' : ''}">
                     ${senderMarkup}
                     ${renderReplyPreviewMarkup(replyPreview)}
+                    ${languageBadgeMarkup}
                     ${renderVoicePlayerMarkup({
                         source: voiceUrl,
                         mime: voiceMime,
@@ -1501,6 +1850,7 @@ function renderReceivedMessageCard(e)
                 <div class="wsus__single_chat ${isMine ? 'chat_right' : ''}">
                     ${senderMarkup}
                     ${renderReplyPreviewMarkup(replyPreview)}
+                    ${languageBadgeMarkup}
                     ${body ? `<p class="messages">${body}</p>` : ''}
                     ${mediaMarkup}
                     ${renderReactionSummaryMarkup(e.id, reactions)}
@@ -1516,6 +1866,7 @@ function renderReceivedMessageCard(e)
             <div class="wsus__single_chat ${isMine ? 'chat_right' : ''}">
                 ${senderMarkup}
                 ${renderReplyPreviewMarkup(replyPreview)}
+                ${languageBadgeMarkup}
                 ${body ? `<p class="messages">${body}</p>` : ''}
                 ${renderReactionSummaryMarkup(e.id, reactions)}
                 ${renderMessageActionsMarkup({ messageId: e.id, canDelete, canInteract })}
@@ -1861,6 +2212,7 @@ function messageFormReset()
     clearComposerAttachments();
     clearVoiceRecordingPreview();
     clearComposerReplyTarget();
+    hideSmartReplies();
     resetVoiceRecordingState();
     toggleComposerState('has-attachments', false);
     toggleComposerState('has-voice-preview', false);
@@ -1873,6 +2225,7 @@ function messageFormReset()
     messageForm.trigger("reset");
     setComposerText('');
     toggleComposerEmojiPopover(false);
+    setToneIndicator('');
 
 }//End Method
 
@@ -1925,6 +2278,12 @@ function setActiveConversation(conversationKey, options = {})
 
     setConversationKey(conversationKey);
     setMessengerId(userId || '');
+    persistActiveConversation(conversationKey, {
+        type,
+        userId,
+        groupId: type === 'group' ? Number(options.groupId || conversationKey.split(':')[1] || 0) : 0,
+    });
+    switchMessengerTab(type === 'group' ? 'groups' : 'dms');
     updateSelectedContent(conversationKey);
     setHeaderConversationActions(type);
 }
@@ -1949,6 +2308,30 @@ function openConversationFromQuery()
     });
     hideTypingIndicator();
     Idinfo(conversationKey);
+    messageFormReset();
+}
+
+function restoreLastConversationSelection()
+{
+    const params = new URLSearchParams(window.location.search);
+
+    if (params.get('conversation')) {
+        return;
+    }
+
+    const storedConversation = readStoredConversation();
+
+    if (!storedConversation?.key) {
+        return;
+    }
+
+    setActiveConversation(storedConversation.key, {
+        type: storedConversation.type,
+        userId: storedConversation.userId,
+        groupId: storedConversation.groupId,
+    });
+    hideTypingIndicator();
+    Idinfo(storedConversation.key);
     messageFormReset();
 }
 
@@ -2018,6 +2401,13 @@ function fetchMessages(id, newFetch = false)
                 if (messagesPage === 1) {
                     window.__messengerCallManager?.rehydrateHistoryMessage?.();
                     scrolllToBottom(messageBoxContainer);
+
+                    const lastMessage = data?.last_message || null;
+                    if (lastMessage && Number(lastMessage.from_id || 0) !== Number(auth_id) && String(lastMessage.body || '').trim().length) {
+                        loadSmartReplies(lastMessage.body);
+                    } else {
+                        hideSmartReplies();
+                    }
                 }
 
                 //Pagination Lock and Page Increment
@@ -2065,14 +2455,17 @@ function getContacts()
             success: function(data){
                 contactLoading = false;
                 messengerContactBox.find(".contact-loader").remove();
+                messengerGroupBox.find(".contact-loader").remove();
 
                 if(contactsPage < 2)
                 {
-                    messengerContactBox.html(data.contacts);
+                    messengerContactBox.html(data.direct_contacts || '');
+                    messengerGroupBox.html(data.group_contacts || '');
 
                 }else
                 {
-                    messengerContactBox.append(data.contacts);
+                    messengerContactBox.append(data.direct_contacts || '');
+                    messengerGroupBox.append(data.group_contacts || '');
                 }
                 
                 noMoreContacts =  contactsPage >= data?.last_page;
@@ -2081,11 +2474,21 @@ function getContacts()
 
                 //Cheks either the user is activate on pagination or not and set active class.
                 updateUserActiveList();
+                updateSidebarBadges({
+                    groupUnread: Number(data?.counts?.group_unread || 0),
+                });
+                refreshGroupOnlineState();
+                refreshSidebarBadgeCountsFromDom();
+
+                if (getConversationKey()) {
+                    updateSelectedContent(getConversationKey());
+                }
 
             },
             error: function(xhr, status, error){
                 contactLoading = false;
                 messengerContactBox.find(".contact-loader").remove();
+                messengerGroupBox.find(".contact-loader").remove();
             }
         });
     }
@@ -2243,6 +2646,7 @@ function Idinfo(id)
             //Fetch Favourites and handles the favorite button
             data.favorite > 0 ? $(".favourite").addClass("active") : $(".favourite").removeClass("active");
             setHeaderConversationActions(data.type || 'user');
+            setDisappearingState(String(data.disappear_after || 'off'));
 
             if (data.type === 'group') {
                 const group = data.group || {};
@@ -2307,12 +2711,12 @@ function updateContactItem(user_id)
         url : route('messenger.update-contact-item'),
         data: conversationPayload,
         success: function(data){
-            if (messageBoxContainer.find('.no_contact').length) {
-                messengerContactBox.find('.no_contact').remove();
-            }
+            messengerContactBox.find('.no_contact').remove();
+            messengerGroupBox.find('.no_group_contact').remove();
             const conversationKey = data.conversation_key || conversationPayload.conversation_key || `user:${user_id}`;
-            messengerContactBox.find(`.messenger-list-item[data-conversation-key="${conversationKey}"]`).remove();
-            messengerContactBox.prepend(data.contact_item);
+            const targetBox = conversationKey.startsWith('group:') ? messengerGroupBox : messengerContactBox;
+            targetBox.find(`.messenger-list-item[data-conversation-key="${conversationKey}"]`).remove();
+            targetBox.prepend(data.contact_item);
             const activeUserId = Number(conversationPayload.id || 0);
             if(activeUserId > 0) {
                 if(activeUsersIds.includes(activeUserId)){
@@ -2321,6 +2725,9 @@ function updateContactItem(user_id)
                     userInactive(activeUserId);
                 }
             }
+
+            refreshGroupOnlineState();
+            refreshSidebarBadgeCountsFromDom();
 
             if(conversationKey == getConversationKey()) updateSelectedContent(conversationKey);
 
@@ -2341,7 +2748,17 @@ function updateContactItem(user_id)
 function updateSelectedContent(user_id)
 {
     $(".messenger-list-item").removeClass('active');
-    $(`.messenger-list-item[data-conversation-key="${user_id}"]`).addClass('active');
+    const activeItem = $(`.messenger-list-item[data-conversation-key="${user_id}"]`);
+    activeItem.addClass('active');
+
+    const activeElement = activeItem.get(0);
+
+    if (activeElement && typeof activeElement.scrollIntoView === 'function') {
+        activeElement.scrollIntoView({
+            block: 'nearest',
+            inline: 'nearest',
+        });
+    }
 
 }//End Method
 
@@ -2451,6 +2868,9 @@ window.Echo.private('message.' + auth_id)
             scrolllToBottom(messageBoxContainer);
             makeSeen(true);
             hideTypingIndicator();
+            if (Number(e.from_id || 0) !== Number(auth_id)) {
+                loadSmartReplies(e.body || '');
+            }
         }
 
 });//End Method
@@ -2481,26 +2901,28 @@ window.Echo.private('message.' + auth_id)
 window.Echo.join('online')
     .here((users) => {
         //Set Active Users Ids
+        activeUsersIds = [];
+        activeUsersMap = new Map();
         setActiveUsersIds(users);
-        // console.log(activeUsersIds);
         $.each(users, function(index, user){
             let contactItem = $(`.messenger-list-item[data-user-id="${user.id}"]`).find('.img').find('span');
             contactItem.removeClass('inactive');
             contactItem.addClass('active');
+            upsertActiveUser(user);
 
         });
 
 }).joining((user) => {
     //Adding new user to the active users array
     addNewUserId(user.id);
-    // console.log(activeUsersIds);
     userActive(user.id);
+    upsertActiveUser(user);
 
 }).leaving((user) => {
     //Removing user from the active users array
     removeUserId(user.id);
-    // console.log(activeUsersIds);
     userInactive(user.id);
+    removeActiveUser(user.id);
 
 });//End Method
 
@@ -2558,7 +2980,11 @@ function userInactive(id)
 function setActiveUsersIds(users)
 {
     $.each(users, function(index, user){
-        activeUsersIds.push(user.id);
+        const numericId = Number(user.id);
+
+        if (!activeUsersIds.includes(numericId)) {
+            activeUsersIds.push(numericId);
+        }
     });
 
 }//End Method
@@ -2571,7 +2997,11 @@ function setActiveUsersIds(users)
 */
 function addNewUserId(id)
 {
-    activeUsersIds.push(id);
+    const numericId = Number(id);
+
+    if (!activeUsersIds.includes(numericId)) {
+        activeUsersIds.push(numericId);
+    }
 
 }
 
@@ -2583,13 +3013,35 @@ function addNewUserId(id)
 */
 function removeUserId(id)
 {
-    let index = activeUsersIds.indexOf(id);
+    let index = activeUsersIds.indexOf(Number(id));
 
     if(index !== -1){
         activeUsersIds.splice(index, 1);
     }
 
 }
+
+window.addEventListener('message', (event) => {
+    if (event.origin !== window.location.origin) {
+        return;
+    }
+
+    if (event.data?.type !== 'call_ended' || !event.data?.conversationKey) {
+        return;
+    }
+
+    const conversationKey = String(event.data.conversationKey);
+    const isGroup = !!event.data.isGroup;
+    const conversationId = Number(event.data.conversationId || 0);
+
+    setActiveConversation(conversationKey, {
+        type: isGroup ? 'group' : 'user',
+        userId: isGroup ? 0 : conversationId,
+        groupId: isGroup ? conversationId : 0,
+    });
+    hideTypingIndicator();
+    Idinfo(conversationKey);
+});
 
 
 /**
@@ -2605,6 +3057,7 @@ $(document).ready(function ()
     setHeaderConversationActions('group');
     hideTypingIndicator();
     openConversationFromQuery();
+    restoreLastConversationSelection();
 
     /**
      *  -------------------------------------------
@@ -2636,6 +3089,10 @@ $(document).ready(function ()
             $input.show().focus(); // Show and focus the input element
             $input.trigger('click'); 
         }
+    });
+
+    messengerTabButtons.on('click', function () {
+        switchMessengerTab(String($(this).data('tab') || 'dms'));
     });
 
     $('#select_file').change(function () {
@@ -2680,14 +3137,92 @@ $(document).ready(function ()
         const conversationKey = String($(this).data('conversationKey') || '');
         const conversationType = String($(this).data('conversationType') || 'user');
         const userId = Number($(this).data('userId') || $(this).data('id') || 0);
+        const groupId = Number($(this).data('groupId') || 0);
 
         setActiveConversation(conversationKey, {
             type: conversationType,
+            userId,
+            groupId,
+        });
+        hideTypingIndicator();
+        Idinfo(conversationKey);
+        messageFormReset();
+        switchMessengerTab(conversationType === 'group' ? 'groups' : 'dms');
+    });
+
+    $('body').on('click', '.group-card__actions button', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+    });
+
+    $('body').on('click', '.group-open-chat', function (e) {
+        e.preventDefault();
+        const card = $(this).closest('.group-card');
+        card.trigger('click');
+    });
+
+    $('body').on('click', '.group-voice-call, .group-video-call', async function (e) {
+        e.preventDefault();
+        const card = $(this).closest('.group-card');
+        const conversationKey = String(card.data('conversationKey') || '');
+        const groupId = Number(card.data('groupId') || 0);
+        const callType = String($(this).data('callType') || 'audio');
+
+        if (!conversationKey || !groupId) {
+            notyf.error('Open the group first before starting a call.');
+            return;
+        }
+
+        setActiveConversation(conversationKey, {
+            type: 'group',
+            groupId,
+        });
+        Idinfo(conversationKey);
+        await window.__messengerCallManager?.startOutgoingCall?.(callType, {
+            groupId,
+            conversationKey,
+        });
+    });
+
+    $('body').on('click', '.quick-chat', function (e) {
+        e.preventDefault();
+        const userId = Number($(this).data('userId') || 0);
+        const conversationKey = `user:${userId}`;
+
+        if (!userId) {
+            return;
+        }
+
+        switchMessengerTab('dms');
+        setActiveConversation(conversationKey, {
+            type: 'user',
             userId,
         });
         hideTypingIndicator();
         Idinfo(conversationKey);
         messageFormReset();
+    });
+
+    $('body').on('click', '.quick-call, .quick-video', async function (e) {
+        e.preventDefault();
+        const userId = Number($(this).data('userId') || 0);
+        const callType = String($(this).data('callType') || 'audio');
+
+        if (!userId) {
+            return;
+        }
+
+        const conversationKey = `user:${userId}`;
+        switchMessengerTab('dms');
+        setActiveConversation(conversationKey, {
+            type: 'user',
+            userId,
+        });
+        Idinfo(conversationKey);
+        await window.__messengerCallManager?.startOutgoingCall?.(callType, {
+            calleeId: userId,
+            conversationKey,
+        });
     });
 
     /**
@@ -2712,8 +3247,14 @@ $(document).ready(function ()
 
     messageInput.on('keydown', composerEnterHandler);
     $('body').on('keydown', '.emojionearea-editor', composerEnterHandler);
-    messageInput.on('input', queueTypingIndicator);
-    $('body').on('input keyup', '.emojionearea-editor', queueTypingIndicator);
+    messageInput.on('input', function () {
+        queueTypingIndicator();
+        refreshMessageTone();
+    });
+    $('body').on('input keyup', '.emojionearea-editor', function () {
+        queueTypingIndicator();
+        refreshMessageTone();
+    });
     messageInput.on('keyup', maybeApplyComposerEmojiShortcuts);
     $('body').on('keyup', '.emojionearea-editor', maybeApplyComposerEmojiShortcuts);
     window.visualViewport?.addEventListener('resize', positionComposerEmojiPopover);
@@ -2748,6 +3289,14 @@ $(document).ready(function ()
     $('body').on('click', '.composer-reply-clear', function (e) {
         e.preventDefault();
         clearComposerReplyTarget();
+        focusComposer();
+    });
+
+    $('body').on('click', '.smart-reply-chip', function (e) {
+        e.preventDefault();
+        setComposerText($(this).text());
+        hideSmartReplies();
+        refreshMessageTone();
         focusComposer();
     });
 
@@ -2796,6 +3345,64 @@ $(document).ready(function ()
         }
     });
 
+    $('.conversation-search-toggle').on('click', function (e) {
+        e.preventDefault();
+        const shouldShow = conversationSearchPanel.hasClass('d-none');
+
+        conversationSearchPanel.toggleClass('d-none', !shouldShow);
+        conversationSearchResults.addClass('d-none').empty();
+
+        if (shouldShow) {
+            conversationSearchInput.trigger('focus');
+        }
+    });
+
+    $('.conversation-search-close').on('click', function (e) {
+        e.preventDefault();
+        conversationSearchPanel.addClass('d-none');
+        conversationSearchInput.val('');
+        conversationSearchResults.addClass('d-none').empty();
+    });
+
+    conversationSearchInput.on('input', debounce(function () {
+        searchConversation(conversationSearchInput.val());
+    }, 280));
+
+    $('body').on('click', '.conversation-search-result', function (e) {
+        e.preventDefault();
+        jumpToMessage($(this).data('messageId'));
+    });
+
+    conversationDisappearOptions.on('click', function (e) {
+        e.preventDefault();
+        const disappearAfter = String($(this).data('disappearAfter') || 'off');
+        const conversationKey = getConversationKey();
+
+        if (!conversationKey) {
+            notyf.error('Select a conversation first.');
+            return;
+        }
+
+        $.ajax({
+            method: 'POST',
+            url: route('messenger.conversation-disappearing'),
+            data: {
+                _token: csrf_token,
+                conversation_key: conversationKey,
+                disappear_after: disappearAfter,
+            },
+            success: function (data) {
+                setDisappearingState(String(data.disappear_after || disappearAfter));
+                notyf.success(disappearAfter === 'off'
+                    ? 'Disappearing messages turned off.'
+                    : `Messages will now disappear after ${disappearAfter}.`);
+            },
+            error: function () {
+                notyf.error('Unable to update disappearing messages right now.');
+            }
+        });
+    });
+
     /**
      *  ---------------------------------
      * | cancels the attachemnt and form |
@@ -2815,21 +3422,24 @@ $(document).ready(function ()
             url: route('messenger.groups.store'),
             data: `${$(this).serialize()}&_token=${encodeURIComponent(csrf_token)}`,
             success: function (data) {
-                if (messengerContactBox.find('.no_contact').length) {
-                    messengerContactBox.find('.no_contact').remove();
-                }
-
-                messengerContactBox.prepend(data.contact_item);
+                messengerGroupBox.find('.no_group_contact').remove();
+                messengerGroupBox.prepend(data.contact_item);
                 createGroupForm[0].reset();
                 bootstrap.Modal.getOrCreateInstance(document.getElementById('createGroupModal')).hide();
 
                 const conversationKey = data.group?.conversation_key || '';
                 if (conversationKey) {
-                    setActiveConversation(conversationKey, { type: 'group' });
+                    switchMessengerTab('groups');
+                    setActiveConversation(conversationKey, {
+                        type: 'group',
+                        groupId: Number(data.group?.id || 0),
+                    });
                     Idinfo(conversationKey);
                     messageFormReset();
                 }
 
+                refreshGroupOnlineState();
+                refreshSidebarBadgeCountsFromDom();
                 notyf.success('Group created successfully.');
             },
             error: function (xhr) {
@@ -2900,6 +3510,8 @@ $(document).ready(function ()
         var windowHeight = $(window).height();
         $('.wsus__chat_area_body').css('height', (windowHeight-120) + 'px');
         $('.messenger-contacts').css('max-height', (windowHeight - 393) + 'px');
+        $('.messenger-groups').css('max-height', (windowHeight - 260) + 'px');
+        $('.messenger-active-users').css('max-height', (windowHeight - 260) + 'px');
         $('.wsus__chat_info_gallery').css('height', (windowHeight - 400) + 'px');
         $('.user_search_list_result').css({
             'height': (windowHeight - 130) + 'px',

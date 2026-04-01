@@ -1,26 +1,31 @@
 # Msg
 
-Laravel 12 messenger with real-time chat, groups, voice notes, media sharing, WebRTC calls, reactions, replies, typing indicators, and installable PWA support.
+Laravel 12 messenger with real-time chat, groups, voice notes, media sharing, WebRTC calls, reactions, replies, typing indicators, lightweight Rubix ML helpers, and installable PWA support.
 
 ## Highlights
 
 - Real-time direct and group messaging with Laravel Echo / Pusher
 - Group creation with shared history and member sidebar
+- Native-feeling sidebar tabs for Chats, Groups, and Active users
 - Voice notes with 2 minute cap, compact custom player, and duration labels
 - Multi-file uploads for images, video, audio, and documents
 - Replies, reactions, and typing indicators
+- In-conversation search with highlighted matches
+- Disappearing messages per conversation: off, 24h, or 7d
+- Smart reply chips, tone indicator, and mixed-language detection badges
 - WebRTC audio/video calls with:
   - missed / not answered call states
   - unanswered ring timeout handling
   - dedicated signed `/call/{id}` room pages
   - mobile incoming-call bottom sheet / desktop incoming-call card
   - full-screen call room with floating controls
-  - group call invites up to 6 participants
+  - group call invites up to 8 participants
   - upgrade from voice to video mid-call
   - in-call emoji bursts over WebRTC data channels
   - in-chat call history
   - incoming call ringtone + browser notifications
   - screen sharing during active video calls
+  - live call quality bars in the room UI
 - Profile editing and username handles
 - Shared media gallery
 - Installable PWA shell with manifest shortcuts + service worker hooks
@@ -39,6 +44,7 @@ Laravel 12 messenger with real-time chat, groups, voice notes, media sharing, We
 - Laravel Echo
 - Pusher-compatible websocket transport
 - WebRTC for calls
+- Rubix ML for lightweight smart reply + tone classification helpers
 
 ## Local Setup
 
@@ -152,6 +158,28 @@ The dedicated call room also includes:
 - mobile control auto-hide
 - wake lock during active calls on supported browsers
 - haptic feedback on accept / decline where supported
+- post-call return to the correct conversation in the main messenger tab
+- group invite flow with presence-aware active-user targeting
+
+## Messaging UX
+
+The messenger sidebar now includes:
+
+- `Chats` tab for direct conversations
+- `Groups` tab with group cards, online counts, and quick voice/video call buttons
+- `Active` tab with online users and quick chat/call/video actions
+
+Conversation helpers include:
+
+- reply threads
+- reactions with one active reaction per user per message
+- emoji shortcut replacement before send and on display
+- emoji picker in the composer
+- smart reply chips powered by a lightweight Rubix-backed classifier
+- tone dot feedback for outgoing messages
+- Nepali / Hindi mixed-language badges
+- conversation-level search
+- disappearing-message timers
 
 ## Security Notes
 

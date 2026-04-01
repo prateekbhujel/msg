@@ -7,6 +7,7 @@ use App\Events\CallInvitation;
 use App\Events\CallSignal;
 use App\Events\CallUpgradeVideo;
 use App\Models\CallSession;
+use App\Models\ChatGroup;
 use App\Models\Message;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
@@ -17,31 +18,50 @@ use Illuminate\Validation\ValidationException;
 
 class CallController extends Controller
 {
+    protected const MAX_GROUP_CALL_PARTICIPANTS = 8;
+
     public function store(Request $request): JsonResponse
     {
         $authId = $this->authUserId();
 
         $data = $request->validate([
-            'callee_id' => ['required', 'integer', 'exists:users,id'],
+            'callee_id' => ['required_without:group_id', 'nullable', 'integer', 'exists:users,id'],
+            'group_id' => ['required_without:callee_id', 'nullable', 'integer', 'exists:chat_groups,id'],
             'call_type' => ['required', 'in:audio,video'],
             'conversation_key' => ['nullable', 'string'],
         ]);
 
-        abort_if((int) $data['callee_id'] === $authId, 422, 'You cannot call yourself.');
+        $group = $this->resolveCallGroup($data['group_id'] ?? null, $authId);
+        $conversationKey = trim((string) $request->string('conversation_key'));
+        $isGroupCall = $group instanceof ChatGroup;
 
-        $existingSession = CallSession::query()
-            ->whereIn('status', ['ringing', 'active'])
-            ->where(function ($query) use ($data) {
-                $query->where(function ($query) use ($data) {
-                    $query->where('caller_id', $this->authUserId())
-                        ->where('callee_id', $data['callee_id']);
-                })->orWhere(function ($query) use ($data) {
-                    $query->where('caller_id', $data['callee_id'])
-                        ->where('callee_id', $this->authUserId());
-                });
-            })
-            ->latest('id')
-            ->first();
+        if ($isGroupCall) {
+            $conversationKey = $group->conversationKey();
+        }
+
+        if (! $isGroupCall) {
+            abort_if((int) $data['callee_id'] === $authId, 422, 'You cannot call yourself.');
+        }
+
+        $existingSession = $isGroupCall
+            ? CallSession::query()
+                ->whereIn('status', ['ringing', 'active'])
+                ->where('meta->conversation_key', $conversationKey)
+                ->latest('id')
+                ->first()
+            : CallSession::query()
+                ->whereIn('status', ['ringing', 'active'])
+                ->where(function ($query) use ($data) {
+                    $query->where(function ($query) use ($data) {
+                        $query->where('caller_id', $this->authUserId())
+                            ->where('callee_id', $data['callee_id']);
+                    })->orWhere(function ($query) use ($data) {
+                        $query->where('caller_id', $data['callee_id'])
+                            ->where('callee_id', $this->authUserId());
+                    });
+                })
+                ->latest('id')
+                ->first();
 
         if ($existingSession && $this->shouldExpireRingingSession($existingSession)) {
             $existingSession = $this->expireRingingSession($existingSession);
@@ -61,6 +81,39 @@ class CallController extends Controller
             ]);
         }
 
+        if ($isGroupCall) {
+            $participantIds = $this->groupParticipantIds($group, $authId);
+            $primaryInviteeId = collect($participantIds)
+                ->first(fn ($id) => (int) $id !== $authId);
+
+            abort_unless($primaryInviteeId, 422, 'Choose at least one other group member before starting a call.');
+
+            $session = CallSession::create([
+                'uuid' => (string) Str::uuid(),
+                'caller_id' => $authId,
+                'callee_id' => (int) $primaryInviteeId,
+                'call_type' => $data['call_type'],
+                'status' => 'ringing',
+                'meta' => array_merge(
+                    $this->buildSessionMeta($participantIds, [$authId], $conversationKey),
+                    $this->groupCallMeta($group)
+                ),
+            ])->load(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name']);
+
+            $historyMessage = $this->ensureHistoryMessage($session, 'ringing');
+            $freshSession = $session->load(['historyMessage']);
+
+            collect($participantIds)
+                ->reject(fn ($participantId) => (int) $participantId === $authId)
+                ->each(fn ($participantId) => CallGroupInvite::dispatch($freshSession, (int) $participantId, $authId));
+
+            return response()->json([
+                'session' => $this->formatSession($freshSession),
+                'history_message' => $this->formatHistoryMessage($historyMessage),
+                'history_message_html' => $this->renderHistoryMessageHtml($historyMessage),
+            ], 201);
+        }
+
         $session = CallSession::create([
             'uuid' => (string) Str::uuid(),
             'caller_id' => $authId,
@@ -70,7 +123,7 @@ class CallController extends Controller
             'meta' => $this->buildSessionMeta(
                 [$authId, (int) $data['callee_id']],
                 [$authId],
-                (string) $request->string('conversation_key')
+                $conversationKey
             ),
         ])->load(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name']);
 
@@ -88,6 +141,7 @@ class CallController extends Controller
     public function accept(CallSession $session): JsonResponse
     {
         $authId = $this->authUserId();
+        $isGroupCall = $this->isGroupSession($session);
 
         $this->authorizeParticipant($session);
 
@@ -111,7 +165,12 @@ class CallController extends Controller
             ]);
         }
 
-        abort_unless($authId === (int) $session->callee_id, 403);
+        abort_unless(
+            $isGroupCall
+                ? $authId !== (int) $session->caller_id
+                : $authId === (int) $session->callee_id,
+            403
+        );
 
         if ($this->shouldExpireRingingSession($session)) {
             $session = $this->expireRingingSession($session);
@@ -123,15 +182,23 @@ class CallController extends Controller
 
         abort_unless($session->status === 'ringing', 409, 'Call is no longer ringing.');
 
+        $joinedParticipantIds = $isGroupCall
+            ? collect([(int) $session->caller_id, $authId])
+                ->filter(fn ($id) => $id > 0)
+                ->unique()
+                ->values()
+                ->all()
+            : collect([(int) $session->caller_id, (int) $session->callee_id])
+                ->filter(fn ($id) => $id > 0)
+                ->unique()
+                ->values()
+                ->all();
+
         $session->update([
             'status' => 'active',
             'accepted_at' => now(),
             'meta' => $this->mergeSessionMeta($session, [
-                'joined_participant_ids' => collect([(int) $session->caller_id, (int) $session->callee_id])
-                    ->filter(fn ($id) => $id > 0)
-                    ->unique()
-                    ->values()
-                    ->all(),
+                'joined_participant_ids' => $joinedParticipantIds,
             ]),
         ]);
 
@@ -153,9 +220,15 @@ class CallController extends Controller
     public function decline(CallSession $session): JsonResponse
     {
         $authId = $this->authUserId();
+        $isGroupCall = $this->isGroupSession($session);
 
         $this->authorizeParticipant($session);
-        abort_unless($authId === (int) $session->callee_id, 403);
+        abort_unless(
+            $isGroupCall
+                ? $authId !== (int) $session->caller_id
+                : $authId === (int) $session->callee_id,
+            403
+        );
         if ($session->status === 'declined') {
             return response()->json([
                 'session' => $this->formatSession($session->fresh(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name'])),
@@ -171,6 +244,44 @@ class CallController extends Controller
         }
 
         abort_unless($session->status === 'ringing', 409, 'Call is no longer ringing.');
+
+        if ($isGroupCall) {
+            $remainingParticipantIds = collect($session->participantIds())
+                ->reject(fn ($id) => (int) $id === $authId)
+                ->values()
+                ->all();
+
+            $remainingJoinedIds = collect($session->joinedParticipantIds())
+                ->reject(fn ($id) => (int) $id === $authId)
+                ->values()
+                ->all();
+
+            if (count($remainingParticipantIds) > 1) {
+                $session->update([
+                    'meta' => $this->mergeSessionMeta($session, [
+                        'participant_ids' => $remainingParticipantIds,
+                        'joined_participant_ids' => $remainingJoinedIds,
+                    ]),
+                ]);
+
+                CallSignal::dispatch(
+                    $session->fresh(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name', 'historyMessage']),
+                    'group_participant_left',
+                    [
+                        'left_user_id' => $authId,
+                        'participant_ids' => $remainingParticipantIds,
+                        'joined_participant_ids' => $remainingJoinedIds,
+                        'reason' => 'declined',
+                    ],
+                    $authId
+                );
+
+                return response()->json([
+                    'ok' => true,
+                    'session' => $this->formatSession($session->fresh(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name'])),
+                ]);
+            }
+        }
 
         $session->update([
             'status' => 'declined',
@@ -343,7 +454,7 @@ class CallController extends Controller
             ->values();
 
         $existingParticipantIds = $session->participantIds();
-        $availableSlots = max(0, 6 - count($existingParticipantIds));
+        $availableSlots = max(0, self::MAX_GROUP_CALL_PARTICIPANTS - count($existingParticipantIds));
 
         if ($availableSlots === 0) {
             throw ValidationException::withMessages([
@@ -419,6 +530,7 @@ class CallController extends Controller
         $participantUsers = $session->participantUsers();
         $joinedParticipantIds = $session->joinedParticipantIds();
         $authId = $this->authUserId();
+        $groupPayload = $this->sessionGroupPayload($session);
 
         return [
             'uuid' => $session->uuid,
@@ -431,6 +543,8 @@ class CallController extends Controller
             'participant_ids' => $session->participantIds(),
             'joined_participant_ids' => $joinedParticipantIds,
             'group_call_id' => $session->uuid,
+            'is_group' => $this->isGroupSession($session),
+            'group' => $groupPayload,
             'room_token' => $session->roomTokenFor($authId),
             'room_url' => route('calls.room', [
                 'session' => $session->uuid,
@@ -469,9 +583,11 @@ class CallController extends Controller
 
         $historyMessage = $session->historyMessage ?: new Message();
         $durationSeconds = (int) data_get($extraMeta, 'duration_seconds', 0);
+        $groupPayload = $this->sessionGroupPayload($session);
 
         $historyMessage->from_id = $session->caller_id;
-        $historyMessage->to_id = $session->callee_id;
+        $historyMessage->to_id = $groupPayload ? null : $session->callee_id;
+        $historyMessage->group_id = $groupPayload['id'] ?? null;
         $historyMessage->message_type = 'call';
         $historyMessage->body = $this->callHistoryBody($session, $status, $durationSeconds);
         $historyMessage->attachment = null;
@@ -480,6 +596,9 @@ class CallController extends Controller
             'call_type' => $session->call_type,
             'status' => $status,
             'direction' => 'outgoing',
+            'conversation_key' => data_get($session->meta, 'conversation_key'),
+            'is_group' => $groupPayload !== null,
+            'group_id' => $groupPayload['id'] ?? null,
             'started_at' => $session->accepted_at?->toIso8601String(),
             'accepted_at' => $session->accepted_at?->toIso8601String(),
             'ended_at' => $session->ended_at?->toIso8601String(),
@@ -570,6 +689,8 @@ class CallController extends Controller
             'body' => $message->body,
             'from_id' => (int) $message->from_id,
             'to_id' => (int) $message->to_id,
+            'group_id' => (int) ($message->group_id ?? 0),
+            'conversation_key' => $message->conversationKey(),
             'message_type' => $message->message_type ?? 'text',
             'attachment' => $message->primaryAttachment()['path'] ?? null,
             'attachments' => $message->attachmentItems(),
@@ -624,6 +745,66 @@ class CallController extends Controller
         }
 
         return empty($meta) ? [] : $meta;
+    }
+
+    protected function resolveCallGroup(mixed $groupId, int $authId): ?ChatGroup
+    {
+        $safeGroupId = (int) $groupId;
+
+        if ($safeGroupId < 1) {
+            return null;
+        }
+
+        return ChatGroup::query()
+            ->with('members:id')
+            ->whereKey($safeGroupId)
+            ->whereHas('members', fn ($query) => $query->where('users.id', $authId))
+            ->firstOrFail();
+    }
+
+    protected function groupParticipantIds(ChatGroup $group, int $authId): array
+    {
+        return $group->members()
+            ->pluck('users.id')
+            ->map(fn ($id) => (int) $id)
+            ->prepend($authId)
+            ->unique()
+            ->take(self::MAX_GROUP_CALL_PARTICIPANTS)
+            ->values()
+            ->all();
+    }
+
+    protected function groupCallMeta(ChatGroup $group): array
+    {
+        return [
+            'is_group' => true,
+            'group_id' => (int) $group->id,
+            'group_name' => $group->name,
+            'group_avatar' => $group->avatarPath(),
+            'group_member_count' => $group->memberCount(),
+        ];
+    }
+
+    protected function isGroupSession(CallSession $session): bool
+    {
+        return (bool) data_get($session->meta, 'is_group', false)
+            || str_starts_with((string) data_get($session->meta, 'conversation_key', ''), 'group:');
+    }
+
+    protected function sessionGroupPayload(CallSession $session): ?array
+    {
+        if (! $this->isGroupSession($session)) {
+            return null;
+        }
+
+        $groupId = (int) data_get($session->meta, 'group_id', 0);
+
+        return [
+            'id' => $groupId > 0 ? $groupId : null,
+            'name' => data_get($session->meta, 'group_name', 'Group call'),
+            'avatar' => data_get($session->meta, 'group_avatar', 'default/avatar.png'),
+            'member_count' => (int) data_get($session->meta, 'group_member_count', count($session->participantIds())),
+        ];
     }
 
     protected function markParticipantJoined(CallSession $session, int $userId): bool

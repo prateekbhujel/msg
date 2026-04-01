@@ -14,6 +14,21 @@ class Message extends Model
 {
     use HasFactory;
 
+    protected const EMOJI_SHORTCUTS = [
+        '/:\)/' => '😊',
+        '/:\(/' => '😢',
+        '/:D/i' => '😄',
+        '/:P/i' => '😛',
+        '/:\|/' => '😐',
+        '/;\)/' => '😉',
+        '/:O/i' => '😮',
+        '/:\'\(/' => '😭',
+        '/<3/' => '❤️',
+        '/B\)/' => '😎',
+        '/>:\(/' => '😠',
+        '/:\*/' => '😘',
+    ];
+
     protected $fillable = [
         'from_id',
         'to_id',
@@ -298,7 +313,7 @@ class Message extends Model
         }
 
         if ($this->body) {
-            return Str::limit(trim(preg_replace('/\s+/', ' ', $this->body) ?: ''), 72, '…');
+            return Str::limit(trim(preg_replace('/\s+/', ' ', $this->displayBody()) ?: ''), 72, '…');
         }
 
         if ($this->hasAttachments()) {
@@ -492,7 +507,72 @@ class Message extends Model
                 : 'Sent ' . strtolower($summary) . '.');
         }
 
-        return $senderPrefix . ($this->body ?: 'Message');
+        return $senderPrefix . ($this->displayBody() ?: 'Message');
+    }
+
+    public function displayBody(): ?string
+    {
+        return self::replaceEmojiShortcuts($this->body);
+    }
+
+    public function languageCode(): ?string
+    {
+        $storedLanguage = data_get($this->meta, 'language');
+
+        if (is_string($storedLanguage) && in_array($storedLanguage, ['ne', 'hi'], true)) {
+            return $storedLanguage;
+        }
+
+        return self::detectLanguageCodeFromText($this->body);
+    }
+
+    public function languageBadge(): string
+    {
+        return match ($this->languageCode()) {
+            'ne' => '🇳🇵',
+            'hi' => '🇮🇳',
+            default => '',
+        };
+    }
+
+    public static function replaceEmojiShortcuts(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $normalized = (string) $value;
+
+        foreach (self::EMOJI_SHORTCUTS as $pattern => $emoji) {
+            $normalized = preg_replace($pattern, $emoji, $normalized) ?? $normalized;
+        }
+
+        return $normalized;
+    }
+
+    public static function detectLanguageCodeFromText(?string $text): ?string
+    {
+        $normalized = Str::lower(trim((string) $text));
+
+        if ($normalized === '') {
+            return null;
+        }
+
+        $nepaliWords = ['dai', 'didi', 'hajur', 'tapai', 'kasari', 'kasto', 'ramro', 'thik', 'cha', 'haina', 'xaina', 'ho', 'bhayo'];
+        $hindiWords = ['kya', 'hai', 'nahi', 'aur', 'mera', 'tera', 'haan', 'toh', 'bhi', 'karo', 'kuch'];
+
+        $neScore = collect($nepaliWords)->filter(fn ($word) => str_contains($normalized, $word))->count();
+        $hiScore = collect($hindiWords)->filter(fn ($word) => str_contains($normalized, $word))->count();
+
+        if ($neScore >= 2) {
+            return 'ne';
+        }
+
+        if ($hiScore >= 2) {
+            return 'hi';
+        }
+
+        return null;
     }
 
     protected function normalizeAttachment(mixed $attachment): ?array

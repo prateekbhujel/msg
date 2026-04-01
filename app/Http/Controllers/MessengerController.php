@@ -7,6 +7,7 @@ use App\Events\MessageReactionUpdated;
 use App\Events\TypingIndicatorUpdated;
 use App\Models\ChatGroup;
 use App\Models\ChatGroupMember;
+use App\Models\ConversationSetting;
 use App\Models\Favourite;
 use App\Models\Message;
 use App\Models\User;
@@ -16,6 +17,14 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
+use Rubix\ML\Classifiers\KNearestNeighbors;
+use Rubix\ML\Classifiers\NaiveBayes;
+use Rubix\ML\Datasets\Labeled;
+use Rubix\ML\Datasets\Unlabeled;
+use Rubix\ML\Pipeline;
+use Rubix\ML\Tokenizers\Word;
+use Rubix\ML\Transformers\IntervalDiscretizer;
+use Rubix\ML\Transformers\WordCountVectorizer;
 
 class MessengerController extends Controller
 {
@@ -63,8 +72,10 @@ class MessengerController extends Controller
 
     public function fetchIdInfo(Request $request)
     {
+        $this->purgeExpiredMessages();
         $conversation = $this->resolveConversationFromRequest($request);
         $content = '';
+        $disappearAfter = $this->conversationDisappearAfter($conversation);
 
         if ($conversation['type'] === 'group') {
             /** @var \App\Models\ChatGroup $group */
@@ -101,6 +112,7 @@ class MessengerController extends Controller
                     'user_name' => $group->memberCount() . ' members',
                     'member_count' => $group->memberCount(),
                 ],
+                'disappear_after' => $disappearAfter,
                 'members' => $group->members->map(fn (User $member) => [
                     'id' => (int) $member->id,
                     'name' => $member->name,
@@ -151,6 +163,7 @@ class MessengerController extends Controller
             'conversation_key' => $conversation['conversation_key'],
             'fetch' => $user,
             'favorite' => $favorite,
+            'disappear_after' => $disappearAfter,
             'shared_photos' => $content,
             'members' => [],
         ]);
@@ -158,6 +171,7 @@ class MessengerController extends Controller
 
     public function sendMessage(Request $request)
     {
+        $this->purgeExpiredMessages();
         $request->validate([
             'id' => ['nullable', 'integer'],
             'conversation_key' => ['nullable', 'string'],
@@ -177,6 +191,9 @@ class MessengerController extends Controller
         $voiceAttachment = $this->collectVoiceAttachment($request);
         $allAttachments = array_merge($attachments, $voiceAttachment ? [$voiceAttachment] : []);
         $voiceDurationSeconds = (int) $request->integer('voice_duration_seconds', 0);
+        $normalizedBody = Message::replaceEmojiShortcuts($request->message);
+        $languageCode = Message::detectLanguageCodeFromText($normalizedBody);
+        $expiresAt = $this->conversationExpiryForNewMessage($conversation);
 
         $message = new Message();
         $message->from_id = Auth::id();
@@ -184,9 +201,11 @@ class MessengerController extends Controller
         $message->group_id = $conversation['type'] === 'group' ? (int) $conversation['group']->id : null;
         $message->reply_to_id = $replyToMessage?->id;
         $message->message_type = $voiceAttachment && empty($attachments) ? 'voice' : (! empty($allAttachments) ? 'media' : 'text');
-        $message->body = $request->message;
+        $message->body = $normalizedBody;
         $message->meta = array_filter([
             'duration_seconds' => $voiceDurationSeconds > 0 ? $voiceDurationSeconds : null,
+            'language' => $languageCode,
+            'expires_at' => $expiresAt?->toIso8601String(),
         ], static fn ($value) => $value !== null);
 
         if (! empty($allAttachments)) {
@@ -221,6 +240,7 @@ class MessengerController extends Controller
 
     public function fetchMessages(Request $request)
     {
+        $this->purgeExpiredMessages();
         $conversation = $this->resolveConversationFromRequest($request);
         $messages = $this->conversationMessagesQuery($conversation)
             ->latest()
@@ -267,25 +287,38 @@ class MessengerController extends Controller
 
     public function fetchContacts()
     {
+        $this->purgeExpiredMessages();
         $authId = (int) Auth::id();
         $directContacts = $this->buildDirectContacts($authId);
         $groupContacts = $this->buildGroupContacts($authId);
 
-        $contacts = $directContacts
-            ->concat($groupContacts)
-            ->sortByDesc(fn (array $contact) => $contact['last_message_at'] ?: now()->subYears(30))
-            ->values();
-
-        if ($contacts->isEmpty()) {
-            $contactHtml = "<p class='text text-muted text-center mt-5 no_contact'>Your Contacts list is empty! 😥 </p>";
-        } else {
-            $contactHtml = $contacts
+        $directContactHtml = $directContacts->isEmpty()
+            ? "<p class='text text-muted text-center mt-5 no_contact'>Your direct message list is empty right now.</p>"
+            : $directContacts
+                ->sortByDesc(fn (array $contact) => $contact['last_message_at'] ?: now()->subYears(30))
                 ->map(fn (array $contact) => $this->getContactItem($contact))
                 ->implode('');
-        }
+
+        $groupContactHtml = $groupContacts->isEmpty()
+            ? "<p class='text text-muted text-center mt-5 no_group_contact'>No groups yet. Create one to get started.</p>"
+            : $groupContacts
+                ->sortByDesc(fn (array $contact) => $contact['last_message_at'] ?: now()->subYears(30))
+                ->map(fn (array $contact) => $this->getContactItem($contact))
+                ->implode('');
 
         return response()->json([
-            'contacts' => $contactHtml,
+            'contacts' => $directContacts
+                ->concat($groupContacts)
+                ->sortByDesc(fn (array $contact) => $contact['last_message_at'] ?: now()->subYears(30))
+                ->map(fn (array $contact) => $this->getContactItem($contact))
+                ->implode(''),
+            'direct_contacts' => $directContactHtml,
+            'group_contacts' => $groupContactHtml,
+            'counts' => [
+                'direct' => $directContacts->count(),
+                'groups' => $groupContacts->count(),
+                'group_unread' => (int) $groupContacts->sum(fn (array $contact) => (int) ($contact['unseen_count'] ?? 0)),
+            ],
             'last_page' => 1,
         ]);
     }
@@ -297,6 +330,7 @@ class MessengerController extends Controller
 
     public function updateContactItem(Request $request)
     {
+        $this->purgeExpiredMessages();
         $conversation = $this->resolveConversationFromRequest($request);
         $authId = (int) Auth::id();
 
@@ -484,6 +518,85 @@ class MessengerController extends Controller
 
         return response()->json([
             'ok' => true,
+        ]);
+    }
+
+    public function smartReply(Request $request)
+    {
+        $messageText = Message::replaceEmojiShortcuts((string) $request->input('text', ''));
+        $intent = $this->predictSmartReplyIntent($messageText);
+        $suggestions = $this->smartReplySuggestionsForIntent($intent);
+
+        return response()->json([
+            'suggestions' => $suggestions,
+        ]);
+    }
+
+    public function analyzeTone(Request $request)
+    {
+        $text = Message::replaceEmojiShortcuts((string) $request->input('text', ''));
+        $tone = $this->predictMessageTone($text);
+
+        return response()->json([
+            'tone' => $tone,
+        ]);
+    }
+
+    public function searchConversation(Request $request)
+    {
+        $this->purgeExpiredMessages();
+        $request->validate([
+            'conversation_key' => ['required', 'string'],
+            'q' => ['required', 'string', 'max:120'],
+        ]);
+
+        $conversation = $this->resolveConversationFromRequest($request);
+        $query = mb_strtolower(trim((string) $request->input('q', '')));
+
+        $messages = $this->conversationMessagesQuery($conversation)
+            ->orderByDesc('created_at')
+            ->get()
+            ->filter(function (Message $message) use ($query) {
+                $text = mb_strtolower((string) $message->displayBody());
+
+                return $text !== '' && str_contains($text, $query);
+            })
+            ->take(20)
+            ->values();
+
+        return response()->json([
+            'results' => $messages->map(function (Message $message) use ($query) {
+                $body = $message->displayBody() ?: $message->replySnippet();
+                $escapedBody = e($body);
+                $highlighted = $query !== ''
+                    ? preg_replace('/(' . preg_quote($query, '/') . ')/i', '<mark>$1</mark>', $escapedBody)
+                    : $escapedBody;
+
+                return [
+                    'id' => (int) $message->id,
+                    'preview' => $highlighted,
+                    'created_at' => optional($message->created_at)->toIso8601String(),
+                ];
+            }),
+        ]);
+    }
+
+    public function updateDisappearingMessages(Request $request)
+    {
+        $request->validate([
+            'conversation_key' => ['required', 'string'],
+            'disappear_after' => ['required', 'in:off,24h,7d'],
+        ]);
+
+        $conversation = $this->resolveConversationFromRequest($request);
+        $setting = $this->persistConversationDisappearSetting(
+            $conversation,
+            (string) $request->input('disappear_after')
+        );
+
+        return response()->json([
+            'ok' => true,
+            'disappear_after' => $setting->disappear_after,
         ]);
     }
 
@@ -726,10 +839,102 @@ class MessengerController extends Controller
             'avatar' => $group->avatarPath(),
             'name' => $group->name,
             'secondary' => $group->members->count() . ' members',
+            'member_count' => $group->members->count(),
+            'member_ids' => $group->members->pluck('id')->map(fn ($id) => (int) $id)->values()->all(),
             'preview' => $lastMessage ? $lastMessage->previewText($authId) : 'Create the first message for this group.',
             'unseen_count' => $unseenCounter,
             'last_message_at' => $lastMessage?->created_at,
         ];
+    }
+
+    protected function conversationDisappearAfter(array $conversation): string
+    {
+        if ($conversation['type'] === 'group') {
+            return ConversationSetting::query()
+                ->where('group_id', (int) $conversation['group']->id)
+                ->value('disappear_after') ?: 'off';
+        }
+
+        [$userAId, $userBId] = $this->directConversationPairIds((int) Auth::id(), (int) $conversation['user']->id);
+
+        return ConversationSetting::query()
+            ->where('direct_user_a_id', $userAId)
+            ->where('direct_user_b_id', $userBId)
+            ->value('disappear_after') ?: 'off';
+    }
+
+    protected function persistConversationDisappearSetting(array $conversation, string $value): ConversationSetting
+    {
+        if ($conversation['type'] === 'group') {
+            return ConversationSetting::query()->updateOrCreate(
+                ['group_id' => (int) $conversation['group']->id],
+                [
+                    'direct_user_a_id' => null,
+                    'direct_user_b_id' => null,
+                    'disappear_after' => $value,
+                ]
+            );
+        }
+
+        [$userAId, $userBId] = $this->directConversationPairIds((int) Auth::id(), (int) $conversation['user']->id);
+
+        return ConversationSetting::query()->updateOrCreate(
+            [
+                'direct_user_a_id' => $userAId,
+                'direct_user_b_id' => $userBId,
+            ],
+            [
+                'group_id' => null,
+                'disappear_after' => $value,
+            ]
+        );
+    }
+
+    protected function conversationExpiryForNewMessage(array $conversation): ?\Illuminate\Support\Carbon
+    {
+        return match ($this->conversationDisappearAfter($conversation)) {
+            '24h' => now()->addDay(),
+            '7d' => now()->addWeek(),
+            default => null,
+        };
+    }
+
+    protected function directConversationPairIds(int $firstUserId, int $secondUserId): array
+    {
+        $ids = collect([$firstUserId, $secondUserId])->map(fn ($id) => (int) $id)->sort()->values();
+
+        return [(int) $ids[0], (int) $ids[1]];
+    }
+
+    protected function purgeExpiredMessages(): void
+    {
+        Message::query()
+            ->whereNotNull('meta')
+            ->get()
+            ->filter(function (Message $message) {
+                $expiresAt = data_get($message->meta, 'expires_at');
+
+                if (! is_string($expiresAt) || $expiresAt === '') {
+                    return false;
+                }
+
+                try {
+                    return now()->greaterThanOrEqualTo(\Illuminate\Support\Carbon::parse($expiresAt));
+                } catch (\Throwable) {
+                    return false;
+                }
+            })
+            ->each(function (Message $message) {
+                foreach ($message->attachmentItems() as $attachment) {
+                    $attachmentPath = $this->resolveStoredUploadPath($attachment['path']);
+
+                    if (is_file($attachmentPath)) {
+                        @unlink($attachmentPath);
+                    }
+                }
+
+                $message->delete();
+            });
     }
 
     protected function markGroupConversationRead(int $groupId, int $userId, int $messageId): void
@@ -752,5 +957,203 @@ class MessengerController extends Controller
         } catch (\Throwable $throwable) {
             report($throwable);
         }
+    }
+
+    protected function predictSmartReplyIntent(string $messageText): string
+    {
+        $normalizedText = trim(mb_strtolower($messageText));
+
+        if ($normalizedText === '') {
+            return 'default';
+        }
+
+        foreach ([
+            'greeting' => ['hello', 'hi', 'hey', 'yo', 'sup'],
+            'checkin' => ['how are you', 'hows it', 'how u', 'you okay', 'hope youre'],
+            'gratitude' => ['thank you', 'thanks', 'thx', 'appreciate'],
+            'agree' => ['okay', 'ok', 'sure', 'yep', 'yes'],
+            'decline' => ['nope', 'nah', 'not really', 'maybe later', 'cant'],
+            'farewell' => ['bye', 'see you', 'goodnight', 'talk soon', 'cya'],
+            'planning' => ['where', 'when', 'what time', 'location', 'check that'],
+            'affection' => ['love', 'miss you', 'thinking of you', '❤️'],
+        ] as $intent => $keywords) {
+            if (collect($keywords)->contains(function (string $keyword) use ($normalizedText) {
+                if (preg_match('/[\p{L}\p{N}]/u', $keyword)) {
+                    return preg_match('/\b' . preg_quote($keyword, '/') . '\b/u', $normalizedText) === 1;
+                }
+
+                return str_contains($normalizedText, $keyword);
+            })) {
+                return $intent;
+            }
+        }
+
+        try {
+            return $this->smartReplyEstimator()->predict(
+                Unlabeled::quick([[$normalizedText]])
+            )[0] ?? 'default';
+        } catch (\Throwable $throwable) {
+            report($throwable);
+
+            return 'default';
+        }
+    }
+
+    protected function smartReplySuggestionsForIntent(string $intent): array
+    {
+        return match ($intent) {
+            'greeting' => ['Hey! 👋', 'Hi there!', 'Hello!'],
+            'checkin' => ["I'm good, you?", 'Doing well!', 'All good 😊'],
+            'gratitude' => ['No problem!', 'Anytime 😊', "You're welcome!"],
+            'agree' => ['👍', 'Sounds good!', 'Alright!'],
+            'decline' => ['Oh okay', 'No worries', 'Got it'],
+            'farewell' => ['Bye! 👋', 'See ya!', 'Take care!'],
+            'planning' => ["I'll check", 'Let me see', 'Not sure yet'],
+            'affection' => ['❤️', 'Miss you too!', '😊'],
+            default => ['👍', 'Okay!', 'Got it'],
+        };
+    }
+
+    protected function smartReplyEstimator(): Pipeline
+    {
+        static $estimator = null;
+
+        if ($estimator instanceof Pipeline) {
+            return $estimator;
+        }
+
+        $trainingSamples = [
+            ['hello', 'greeting'],
+            ['hi there', 'greeting'],
+            ['hey', 'greeting'],
+            ['yo whats up', 'greeting'],
+            ['good morning', 'greeting'],
+            ['how are you', 'checkin'],
+            ['hows it going', 'checkin'],
+            ['how u doing', 'checkin'],
+            ['are you okay', 'checkin'],
+            ['hope youre good', 'checkin'],
+            ['thank you', 'gratitude'],
+            ['thanks so much', 'gratitude'],
+            ['thx', 'gratitude'],
+            ['appreciate it', 'gratitude'],
+            ['cheers for that', 'gratitude'],
+            ['okay', 'agree'],
+            ['sure', 'agree'],
+            ['sounds good', 'agree'],
+            ['yes lets do it', 'agree'],
+            ['yep', 'agree'],
+            ['nope', 'decline'],
+            ['nah', 'decline'],
+            ['not really', 'decline'],
+            ['cant do that', 'decline'],
+            ['maybe later', 'decline'],
+            ['bye', 'farewell'],
+            ['see you later', 'farewell'],
+            ['goodnight', 'farewell'],
+            ['talk soon', 'farewell'],
+            ['cya', 'farewell'],
+            ['where are you', 'planning'],
+            ['what time', 'planning'],
+            ['when are we meeting', 'planning'],
+            ['send me the location', 'planning'],
+            ['can you check that', 'planning'],
+            ['love you', 'affection'],
+            ['miss you', 'affection'],
+            ['thinking of you', 'affection'],
+            ['heart heart', 'affection'],
+            ['❤️', 'affection'],
+        ];
+
+        $estimator = new Pipeline(
+            [new WordCountVectorizer(160, 1, 1.0, new Word())],
+            new KNearestNeighbors(3, true)
+        );
+
+        $estimator->train(Labeled::quick(
+            collect($trainingSamples)->map(fn (array $sample) => [$sample[0]])->all(),
+            collect($trainingSamples)->pluck(1)->all()
+        ));
+
+        return $estimator;
+    }
+
+    protected function predictMessageTone(string $messageText): string
+    {
+        $normalizedText = trim(mb_strtolower($messageText));
+
+        if ($normalizedText === '') {
+            return 'neutral';
+        }
+
+        $positiveKeywords = ['love', 'great', 'awesome', 'thanks', 'happy', 'nice', 'amazing', '❤️', '😊', 'cool'];
+        $negativeKeywords = ['hate', 'awful', 'bad', 'upset', 'worst', 'angry', 'sad', 'terrible', '😢', '😠'];
+        $positiveMatches = collect($positiveKeywords)->filter(fn (string $keyword) => str_contains($normalizedText, $keyword))->count();
+        $negativeMatches = collect($negativeKeywords)->filter(fn (string $keyword) => str_contains($normalizedText, $keyword))->count();
+
+        if ($positiveMatches !== $negativeMatches) {
+            return $positiveMatches > $negativeMatches ? 'positive' : 'negative';
+        }
+
+        try {
+            $prediction = $this->messageToneEstimator()->predict(
+                Unlabeled::quick([[$normalizedText]])
+            )[0] ?? 'neutral';
+
+            return in_array($prediction, ['positive', 'neutral', 'negative'], true)
+                ? $prediction
+                : 'neutral';
+        } catch (\Throwable $throwable) {
+            report($throwable);
+
+            return 'neutral';
+        }
+    }
+
+    protected function messageToneEstimator(): Pipeline
+    {
+        static $estimator = null;
+
+        if ($estimator instanceof Pipeline) {
+            return $estimator;
+        }
+
+        $trainingSamples = [
+            ['love this', 'positive'],
+            ['this is awesome', 'positive'],
+            ['thanks so much', 'positive'],
+            ['great job', 'positive'],
+            ['happy for you', 'positive'],
+            ['nice one', 'positive'],
+            ['sounds amazing', 'positive'],
+            ['okay', 'neutral'],
+            ['got it', 'neutral'],
+            ['see you then', 'neutral'],
+            ['what time are you coming', 'neutral'],
+            ['ill check and let you know', 'neutral'],
+            ['can we talk later', 'neutral'],
+            ['bad idea', 'negative'],
+            ['i hate this', 'negative'],
+            ['this is awful', 'negative'],
+            ['im upset', 'negative'],
+            ['thats the worst', 'negative'],
+            ['not happy about this', 'negative'],
+            ['angry right now', 'negative'],
+        ];
+
+        $estimator = new Pipeline(
+            [
+                new WordCountVectorizer(160, 1, 1.0, new Word()),
+                new IntervalDiscretizer(4),
+            ],
+            new NaiveBayes()
+        );
+
+        $estimator->train(Labeled::quick(
+            collect($trainingSamples)->map(fn (array $sample) => [$sample[0]])->all(),
+            collect($trainingSamples)->pluck(1)->all()
+        ));
+
+        return $estimator;
     }
 }

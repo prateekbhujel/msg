@@ -38,6 +38,15 @@
                 </div>
             </div>
             <div class="call-room__topbar-actions">
+                <div class="call-room__quality" aria-label="Call quality">
+                    <span class="call-room__quality-label">Signal</span>
+                    <span class="call-room__quality-bars" data-call-quality>
+                        <span class="call-room__quality-bar" data-quality-bar="1"></span>
+                        <span class="call-room__quality-bar" data-quality-bar="2"></span>
+                        <span class="call-room__quality-bar" data-quality-bar="3"></span>
+                        <span class="call-room__quality-bar" data-quality-bar="4"></span>
+                    </span>
+                </div>
                 <button type="button" class="call-room__topbar-button" data-call-open-chat>
                     <i class="far fa-comments"></i>
                     <span>Back to chat</span>
@@ -78,7 +87,7 @@
             <div class="call-room__invite-sheet-header">
                 <div>
                     <h3>Add people</h3>
-                    <p>Bring more people into this call, up to six participants.</p>
+                    <p>Bring more people into this call, up to eight participants.</p>
                 </div>
                 <button type="button" class="call-room__icon-button" data-invite-close aria-label="Close invite panel">
                     <i class="fas fa-times"></i>

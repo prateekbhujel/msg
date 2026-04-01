@@ -218,6 +218,7 @@ class MessengerCallManager
             return;
         }
 
+        this.$modal.appendTo('body');
         this.bindEvents();
         this.armNotificationPermissionRequest();
         this.subscribeToInvitationChannel();
@@ -325,7 +326,7 @@ class MessengerCallManager
 
     showModal()
     {
-        this.$modal.addClass('is-visible').attr('aria-hidden', 'false');
+        this.$modal.appendTo('body').addClass('is-visible').attr('aria-hidden', 'false').css('display', 'flex');
         $('body').addClass('incoming-call-open');
     }
 
@@ -425,16 +426,18 @@ class MessengerCallManager
         return !['idle', 'external'].includes(this.role);
     }
 
-    async startOutgoingCall(callType)
+    async startOutgoingCall(callType, options = {})
     {
-        const calleeId = getSelectedConversationId();
+        const conversationKey = String(options.conversationKey || getConversationKey() || '').trim();
+        const groupId = Number(options.groupId || (conversationKey.startsWith('group:') ? conversationKey.split(':')[1] : 0) || 0);
+        const calleeId = Number(options.calleeId || getSelectedConversationId() || 0);
 
-        if (!calleeId) {
-            notify('error', 'Select a direct conversation before calling.');
+        if (!groupId && !calleeId) {
+            notify('error', 'Select a conversation before calling.');
             return;
         }
 
-        if (calleeId === this.authId) {
+        if (!groupId && calleeId === this.authId) {
             notify('error', 'You cannot call yourself.');
             return;
         }
@@ -452,9 +455,10 @@ class MessengerCallManager
                 url: route('messenger.calls.store'),
                 data: {
                     _token: this.csrfToken,
-                    callee_id: calleeId,
+                    callee_id: groupId ? null : calleeId,
+                    group_id: groupId || null,
                     call_type: callType,
-                    conversation_key: getConversationKey(),
+                    conversation_key: conversationKey,
                 },
             });
 
@@ -463,7 +467,7 @@ class MessengerCallManager
             this.subscribeToSessionChannel(this.session.uuid);
             this.syncHistoryMessage(response.history_message, response.history_message_html, this.session);
             this.openRoomWindow(response.session?.room_url, roomWindow);
-            notify('success', `${callTypeLabel(callType)} call started.`);
+            notify('success', `${callTypeLabel(callType)} ${groupId ? 'group ' : ''}call started.`);
         } catch (error) {
             roomWindow?.close?.();
             this.notifyAjaxError(error, 'Unable to start the call.');
@@ -487,18 +491,28 @@ class MessengerCallManager
         this.session = session;
         this.role = 'incoming';
         this.subscribeToSessionChannel(session.uuid);
-        this.setParticipantCard(session.caller);
+        const modalParticipant = event?.type === 'group' && session?.group ? session.group : session.caller;
+        const groupMemberCount = Number(session?.group?.member_count || session?.participant_ids?.length || 0);
+
+        this.setParticipantCard(modalParticipant);
         this.$mediaLabel.text(event?.type === 'group' ? 'Group call' : `${callTypeLabel(session.call_type)} call`);
-        this.$title.text(event?.type === 'group' ? `${participantName(session.caller)} invited you` : `Incoming ${callTypeLabel(session.call_type)} call`);
+        this.$title.text(event?.type === 'group'
+            ? `${participantName(session.group || session.caller)} is calling`
+            : `Incoming ${callTypeLabel(session.call_type)} call`);
+        this.$participantName.text(event?.type === 'group'
+            ? `${Math.max(groupMemberCount, 2)} people joining`
+            : participantName(session.caller));
         this.updateStatus(event?.type === 'group' ? 'Join the live group call' : 'Incoming call', 'warning');
         this.syncHistoryMessage(event.history_message, event.history_message_html, session);
         this.startPendingCallTimer(event.history_message?.created_at, event.history_message?.meta?.timeout_seconds || session.timeout_seconds);
         this.playRingtone();
-        this.startAttentionPulse(`${participantName(session.caller)} is calling`);
+        this.startAttentionPulse(event?.type === 'group'
+            ? `${participantName(session.group || session.caller)} is calling`
+            : `${participantName(session.caller)} is calling`);
         this.showModal();
         await this.showIncomingCallNotification(session, event?.type === 'group');
         notify('info', event?.type === 'group'
-            ? `${participantName(session.caller)} invited you into a group call.`
+            ? `${participantName(session.group || session.caller)} invited you into a group call.`
             : `${participantName(session.caller)} is calling you.`);
     }
 
@@ -656,9 +670,17 @@ class MessengerCallManager
             return;
         }
 
-        const partnerId = this.getConversationPartnerId(session, historyMessage);
+        const conversationTarget = this.getConversationPartnerId(session, historyMessage);
+        const activeConversationKey = getConversationKey();
 
-        if (!partnerId || Number(getSelectedConversationId()) !== Number(partnerId)) {
+        if (
+            !conversationTarget
+            || (
+                typeof conversationTarget === 'string'
+                    ? activeConversationKey !== conversationTarget
+                    : Number(getSelectedConversationId()) !== Number(conversationTarget)
+            )
+        ) {
             return;
         }
 
@@ -742,6 +764,12 @@ class MessengerCallManager
 
     getConversationPartnerId(session = this.session, historyMessage = null)
     {
+        const conversationKey = String(session?.conversation_key || historyMessage?.conversation_key || historyMessage?.meta?.conversation_key || '').trim();
+
+        if (conversationKey.startsWith('group:')) {
+            return conversationKey;
+        }
+
         const callerId = Number(session?.caller?.id || session?.caller_id || historyMessage?.from_id || 0);
         const calleeId = Number(session?.callee?.id || session?.callee_id || historyMessage?.to_id || 0);
 
@@ -756,10 +784,17 @@ class MessengerCallManager
 
     buildNotificationTargetUrl(session)
     {
+        const conversationKey = String(session?.conversation_key || '').trim();
+        const url = new URL('messenger', this.assetUrl);
+
+        if (conversationKey) {
+            url.searchParams.set('conversation', conversationKey);
+            return url.toString();
+        }
+
         const callerId = Number(session?.caller?.id || 0);
         const calleeId = Number(session?.callee?.id || 0);
         const conversationId = callerId && callerId !== this.authId ? callerId : calleeId;
-        const url = new URL('messenger', this.assetUrl);
 
         if (conversationId > 0) {
             url.searchParams.set('conversation', `user:${conversationId}`);

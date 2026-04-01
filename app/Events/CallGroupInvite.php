@@ -47,9 +47,17 @@ class CallGroupInvite implements ShouldBroadcastNow
                 'call_type' => $this->session->call_type,
                 'status' => $this->session->status,
                 'timeout_seconds' => (int) data_get($this->session->historyMessage?->meta, 'timeout_seconds', 30),
+                'conversation_key' => data_get($this->session->meta, 'conversation_key'),
                 'participant_ids' => $this->session->participantIds(),
                 'joined_participant_ids' => $this->session->joinedParticipantIds(),
                 'group_call_id' => $this->session->uuid,
+                'is_group' => (bool) data_get($this->session->meta, 'is_group', true),
+                'group' => [
+                    'id' => (int) data_get($this->session->meta, 'group_id', 0),
+                    'name' => data_get($this->session->meta, 'group_name'),
+                    'avatar' => data_get($this->session->meta, 'group_avatar', 'default/avatar.png'),
+                    'member_count' => (int) data_get($this->session->meta, 'group_member_count', count($this->session->participantIds())),
+                ],
                 'room_token' => $this->session->roomTokenFor($this->invitedUserId),
                 'room_url' => route('calls.room', [
                     'session' => $this->session->uuid,

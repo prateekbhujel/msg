@@ -30,10 +30,7 @@ Broadcast::channel('call.user.{id}', function ($user, $id) {
 });
 
 Broadcast::channel('call.session.{uuid}', function ($user, $uuid) {
-    return \App\Models\CallSession::where('uuid', $uuid)
-        ->where(function ($query) use ($user) {
-            $query->where('caller_id', $user->id)
-                ->orWhere('callee_id', $user->id);
-        })
-        ->exists();
+    $session = \App\Models\CallSession::where('uuid', $uuid)->first();
+
+    return $session ? $session->hasParticipant((int) $user->id) : false;
 });

@@ -3,45 +3,45 @@
 namespace App\Events;
 
 use App\Models\CallSession;
-use App\Models\Message as MessageModel;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class CallSignal implements ShouldBroadcastNow
+class CallGroupInvite implements ShouldBroadcastNow
 {
     use Dispatchable, SerializesModels;
 
     public function __construct(
         public CallSession $session,
-        public string $type,
-        public array $payload = [],
-        public ?int $fromId = null
+        public int $invitedUserId,
+        public int $fromUserId
     ) {
-        $this->session->loadMissing('caller', 'callee', 'historyMessage');
+        $this->session->loadMissing('caller', 'callee');
     }
 
     public function broadcastOn(): array
     {
         return [
-            new PrivateChannel('call.session.' . $this->session->uuid),
+            new PrivateChannel('call.user.' . $this->invitedUserId),
         ];
     }
 
     public function broadcastAs(): string
     {
-        return 'CallSignal';
+        return 'CallGroupInvite';
     }
 
     public function broadcastWith(): array
     {
-        $callerId = (int) $this->session->caller_id;
-        $calleeId = (int) $this->session->callee_id;
-        $fromId = (int) ($this->fromId ?? auth()->id());
-
         return [
-            'type' => $this->type,
+            'type' => 'group',
+            'callId' => $this->session->uuid,
+            'groupCallId' => $this->session->uuid,
+            'invitedUserId' => $this->invitedUserId,
+            'callerName' => $this->session->caller?->name ?: 'Caller',
+            'from_id' => $this->fromUserId,
+            'to_id' => $this->invitedUserId,
             'session' => [
                 'uuid' => $this->session->uuid,
                 'call_type' => $this->session->call_type,
@@ -50,6 +50,11 @@ class CallSignal implements ShouldBroadcastNow
                 'participant_ids' => $this->session->participantIds(),
                 'joined_participant_ids' => $this->session->joinedParticipantIds(),
                 'group_call_id' => $this->session->uuid,
+                'room_token' => $this->session->roomTokenFor($this->invitedUserId),
+                'room_url' => route('calls.room', [
+                    'session' => $this->session->uuid,
+                    'token' => $this->session->roomTokenFor($this->invitedUserId),
+                ]),
                 'caller' => [
                     'id' => $this->session->caller?->id ? (int) $this->session->caller->id : null,
                     'name' => $this->session->caller?->name,
@@ -70,46 +75,6 @@ class CallSignal implements ShouldBroadcastNow
                     'joined' => in_array((int) $user->id, $this->session->joinedParticipantIds(), true),
                 ])->values()->all(),
             ],
-            'payload' => $this->payload,
-            'history_message' => $this->historyMessagePayload(),
-            'history_message_html' => $this->historyMessageHtml(),
-            'from_id' => $fromId,
-            'to_id' => $callerId === $fromId ? $calleeId : $callerId,
         ];
-    }
-
-    protected function historyMessagePayload(): ?array
-    {
-        $message = $this->session->historyMessage;
-
-        if (! $message instanceof MessageModel) {
-            return null;
-        }
-
-        return [
-            'id' => $message->id,
-            'body' => $message->body,
-            'from_id' => (int) $message->from_id,
-            'to_id' => (int) $message->to_id,
-            'message_type' => $message->message_type ?? 'text',
-            'attachment' => $message->primaryAttachment()['path'] ?? null,
-            'attachments' => $message->attachmentItems(),
-            'meta' => $message->meta ?? [],
-            'seen' => (bool) $message->seen,
-            'created_at' => $message->created_at?->toIso8601String(),
-        ];
-    }
-
-    protected function historyMessageHtml(): ?string
-    {
-        $message = $this->session->historyMessage;
-
-        if (! $message instanceof MessageModel) {
-            return null;
-        }
-
-        return view('messenger.components.message-card', [
-            'message' => $message,
-        ])->render();
     }
 }

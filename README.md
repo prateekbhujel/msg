@@ -12,13 +12,19 @@ Laravel 12 messenger with real-time chat, groups, voice notes, media sharing, We
 - WebRTC audio/video calls with:
   - missed / not answered call states
   - unanswered ring timeout handling
-  - full-screen in-app call surface
+  - dedicated signed `/call/{id}` room pages
+  - mobile incoming-call bottom sheet / desktop incoming-call card
+  - full-screen call room with floating controls
+  - group call invites up to 6 participants
+  - upgrade from voice to video mid-call
+  - in-call emoji bursts over WebRTC data channels
   - in-chat call history
   - incoming call ringtone + browser notifications
   - screen sharing during active video calls
 - Profile editing and username handles
 - Shared media gallery
-- Installable PWA shell with manifest + service worker
+- Installable PWA shell with manifest shortcuts + service worker hooks
+- Emoji-mart powered emoji picker plus emoticon shortcuts like `:)`, `:D`, `<3`
 - Local Theme color themes with saved preference
 - Message-body encryption at rest through Laravel `Crypt`
 
@@ -139,6 +145,13 @@ Call history states currently support:
 - ended with duration
 
 Screen sharing is available in active video calls on browsers that support `getDisplayMedia`.
+
+The dedicated call room also includes:
+
+- local PiP preview
+- mobile control auto-hide
+- wake lock during active calls on supported browsers
+- haptic feedback on accept / decline where supported
 
 ## Security Notes
 

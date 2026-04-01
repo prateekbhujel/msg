@@ -8,6 +8,7 @@ export default defineConfig({
                 'resources/css/app.css',
                 'resources/js/app.js',
                 'resources/js/bootstrap.js',
+                'resources/js/call-room.js',
                 'resources/js/messenger.js',
             ],
             refresh: true,

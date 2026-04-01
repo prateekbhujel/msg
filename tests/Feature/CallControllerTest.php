@@ -1,7 +1,9 @@
 <?php
 
+use App\Events\CallGroupInvite;
 use App\Events\CallInvitation;
 use App\Events\CallSignal;
+use App\Events\CallUpgradeVideo;
 use App\Models\CallSession;
 use App\Models\User;
 use Illuminate\Support\Facades\Event;
@@ -171,4 +173,101 @@ it('does not allow accepting a ringing call after the timeout window', function 
         ->assertStatus(409);
 
     expect($session->fresh()->status)->toBe('missed');
+});
+
+it('shows the dedicated call room with a valid signed token', function () {
+    $caller = User::factory()->create();
+    $callee = User::factory()->create();
+    $session = makeCallSession($caller, $callee, [
+        'meta' => [
+            'participant_ids' => [$caller->id, $callee->id],
+            'joined_participant_ids' => [$caller->id],
+        ],
+    ]);
+
+    $response = $this->actingAs($caller)->get(route('calls.room', [
+        'session' => $session->uuid,
+        'token' => $session->roomTokenFor($caller->id),
+    ]));
+
+    $response->assertOk()->assertSee($session->uuid);
+});
+
+it('rejects the dedicated call room when the token is invalid', function () {
+    $caller = User::factory()->create();
+    $callee = User::factory()->create();
+    $session = makeCallSession($caller, $callee, [
+        'meta' => [
+            'participant_ids' => [$caller->id, $callee->id],
+        ],
+    ]);
+
+    $this->actingAs($caller)->get(route('calls.room', [
+        'session' => $session->uuid,
+        'token' => 'not-valid',
+    ]))->assertForbidden();
+});
+
+it('can invite more people into an active call', function () {
+    Event::fake([CallGroupInvite::class]);
+
+    $caller = User::factory()->create();
+    $callee = User::factory()->create();
+    $guest = User::factory()->create();
+    $session = makeCallSession($caller, $callee, [
+        'status' => 'active',
+        'accepted_at' => now(),
+        'meta' => [
+            'participant_ids' => [$caller->id, $callee->id],
+            'joined_participant_ids' => [$caller->id, $callee->id],
+        ],
+    ]);
+
+    $response = $this->actingAs($caller)->postJson(route('calls.group-invite', [
+        'session' => $session->uuid,
+    ]), [
+        'user_id' => $guest->id,
+    ]);
+
+    $response->assertOk()
+        ->assertJsonPath('ok', true)
+        ->assertJsonPath('invited_user_ids.0', $guest->id);
+
+    expect($session->fresh()->participantIds())->toContain($guest->id);
+
+    Event::assertDispatched(CallGroupInvite::class, function (CallGroupInvite $event) use ($session, $guest) {
+        return $event->session->uuid === $session->uuid
+            && $event->invitedUserId === $guest->id;
+    });
+});
+
+it('upgrades an active audio call to video', function () {
+    Event::fake([CallUpgradeVideo::class]);
+
+    $caller = User::factory()->create();
+    $callee = User::factory()->create();
+    $session = makeCallSession($caller, $callee, [
+        'call_type' => 'audio',
+        'status' => 'active',
+        'accepted_at' => now(),
+        'meta' => [
+            'participant_ids' => [$caller->id, $callee->id],
+            'joined_participant_ids' => [$caller->id, $callee->id],
+        ],
+    ]);
+
+    $response = $this->actingAs($caller)->postJson(route('calls.upgrade', [
+        'session' => $session->uuid,
+    ]));
+
+    $response->assertOk()
+        ->assertJsonPath('ok', true)
+        ->assertJsonPath('session.call_type', 'video');
+
+    expect($session->fresh()->call_type)->toBe('video');
+
+    Event::assertDispatched(CallUpgradeVideo::class, function (CallUpgradeVideo $event) use ($session, $caller) {
+        return $event->session->uuid === $session->uuid
+            && $event->fromUserId === $caller->id;
+    });
 });

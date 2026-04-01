@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\CallGroupInvite;
 use App\Events\CallInvitation;
 use App\Events\CallSignal;
+use App\Events\CallUpgradeVideo;
 use App\Models\CallSession;
 use App\Models\Message;
 use App\Models\User;
@@ -11,6 +13,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class CallController extends Controller
 {
@@ -21,6 +24,7 @@ class CallController extends Controller
         $data = $request->validate([
             'callee_id' => ['required', 'integer', 'exists:users,id'],
             'call_type' => ['required', 'in:audio,video'],
+            'conversation_key' => ['nullable', 'string'],
         ]);
 
         abort_if((int) $data['callee_id'] === $authId, 422, 'You cannot call yourself.');
@@ -63,6 +67,11 @@ class CallController extends Controller
             'callee_id' => $data['callee_id'],
             'call_type' => $data['call_type'],
             'status' => 'ringing',
+            'meta' => $this->buildSessionMeta(
+                [$authId, (int) $data['callee_id']],
+                [$authId],
+                (string) $request->string('conversation_key')
+            ),
         ])->load(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name']);
 
         $historyMessage = $this->ensureHistoryMessage($session, 'ringing');
@@ -81,12 +90,28 @@ class CallController extends Controller
         $authId = $this->authUserId();
 
         $this->authorizeParticipant($session);
-        abort_unless($authId === (int) $session->callee_id, 403);
+
         if ($session->status === 'active') {
+            $participantJoined = $this->markParticipantJoined($session, $authId);
+
+            if ($participantJoined) {
+                CallSignal::dispatch(
+                    $session->fresh(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name', 'historyMessage']),
+                    'group_participant_joined',
+                    [
+                        'joined_user_id' => $authId,
+                        'joined_participant_ids' => $session->fresh()->joinedParticipantIds(),
+                    ],
+                    $authId
+                );
+            }
+
             return response()->json([
                 'session' => $this->formatSession($session->fresh(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name'])),
             ]);
         }
+
+        abort_unless($authId === (int) $session->callee_id, 403);
 
         if ($this->shouldExpireRingingSession($session)) {
             $session = $this->expireRingingSession($session);
@@ -101,6 +126,13 @@ class CallController extends Controller
         $session->update([
             'status' => 'active',
             'accepted_at' => now(),
+            'meta' => $this->mergeSessionMeta($session, [
+                'joined_participant_ids' => collect([(int) $session->caller_id, (int) $session->callee_id])
+                    ->filter(fn ($id) => $id > 0)
+                    ->unique()
+                    ->values()
+                    ->all(),
+            ]),
         ]);
 
         $historyMessage = $this->ensureHistoryMessage($session, 'active');
@@ -108,6 +140,7 @@ class CallController extends Controller
         CallSignal::dispatch($session->fresh(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name', 'historyMessage']), 'accepted', [
             'accepted_at' => now()->toIso8601String(),
             'history_message' => $this->formatHistoryMessage($historyMessage),
+            'joined_participant_ids' => $session->fresh()->joinedParticipantIds(),
         ], $authId);
 
         return response()->json([
@@ -168,11 +201,19 @@ class CallController extends Controller
         abort_unless($session->status === 'active', 409, 'Call is not active.');
 
         $data = $request->validate([
-            'signal_type' => ['required', 'string', 'in:offer,answer,candidate'],
+            'signal_type' => ['required', 'string', 'in:offer,answer,candidate,screen_share_state'],
             'signal_data' => ['required', 'string'],
+            'target_user_id' => ['nullable', 'integer', 'exists:users,id'],
         ]);
 
         $payload = json_decode($data['signal_data'], true);
+        $targetUserId = (int) ($data['target_user_id'] ?? 0);
+
+        if ($targetUserId > 0 && ! $session->hasParticipant($targetUserId)) {
+            throw ValidationException::withMessages([
+                'target_user_id' => 'The selected participant is not part of this call.',
+            ]);
+        }
 
         CallSignal::dispatch(
             $session->fresh(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name']),
@@ -180,6 +221,7 @@ class CallController extends Controller
             [
                 'signal_type' => $data['signal_type'],
                 'signal_data' => $payload,
+                'target_user_id' => $targetUserId > 0 ? $targetUserId : null,
             ],
             $authId
         );
@@ -194,6 +236,42 @@ class CallController extends Controller
         $authId = $this->authUserId();
 
         $this->authorizeParticipant($session);
+
+        if ($session->status === 'active' && count($session->joinedParticipantIds()) > 2) {
+            $remainingParticipantIds = collect($session->participantIds())
+                ->reject(fn ($id) => (int) $id === $authId)
+                ->values()
+                ->all();
+            $remainingJoinedIds = collect($session->joinedParticipantIds())
+                ->reject(fn ($id) => (int) $id === $authId)
+                ->values()
+                ->all();
+
+            if (count($remainingJoinedIds) >= 2) {
+                $session->update([
+                    'meta' => $this->mergeSessionMeta($session, [
+                        'participant_ids' => $remainingParticipantIds,
+                        'joined_participant_ids' => $remainingJoinedIds,
+                    ]),
+                ]);
+
+                CallSignal::dispatch(
+                    $session->fresh(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name', 'historyMessage']),
+                    'group_participant_left',
+                    [
+                        'left_user_id' => $authId,
+                        'participant_ids' => $remainingParticipantIds,
+                        'joined_participant_ids' => $remainingJoinedIds,
+                    ],
+                    $authId
+                );
+
+                return response()->json([
+                    'ok' => true,
+                    'session' => $this->formatSession($session->fresh(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name'])),
+                ]);
+            }
+        }
 
         if (in_array($session->status, ['ended', 'missed'], true)) {
             $historyMessage = $this->ensureHistoryMessage($session, $session->status);
@@ -240,13 +318,108 @@ class CallController extends Controller
         $authId = $this->authUserId();
 
         abort_unless(
-            $authId === (int) $session->caller_id || $authId === (int) $session->callee_id,
+            $session->hasParticipant($authId),
             403
         );
     }
 
+    public function groupInvite(Request $request, CallSession $session): JsonResponse
+    {
+        $authId = $this->authUserId();
+
+        $this->authorizeParticipant($session);
+        abort_unless($session->status === 'active', 409, 'Start the call before inviting more people.');
+
+        $data = $request->validate([
+            'user_ids' => ['required_without:user_id', 'array', 'min:1'],
+            'user_ids.*' => ['required', 'integer', 'exists:users,id', 'distinct'],
+            'user_id' => ['required_without:user_ids', 'integer', 'exists:users,id'],
+        ]);
+
+        $requestedUserIds = collect($data['user_ids'] ?? [$data['user_id'] ?? null])
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0 && $id !== $authId)
+            ->unique()
+            ->values();
+
+        $existingParticipantIds = $session->participantIds();
+        $availableSlots = max(0, 6 - count($existingParticipantIds));
+
+        if ($availableSlots === 0) {
+            throw ValidationException::withMessages([
+                'user_ids' => 'This call already has the maximum number of participants.',
+            ]);
+        }
+
+        $invitedUserIds = $requestedUserIds
+            ->reject(fn ($id) => in_array($id, $existingParticipantIds, true))
+            ->take($availableSlots)
+            ->values();
+
+        if ($invitedUserIds->isEmpty()) {
+            throw ValidationException::withMessages([
+                'user_ids' => 'Choose someone who is not already in the call.',
+            ]);
+        }
+
+        $participantIds = collect($existingParticipantIds)
+            ->concat($invitedUserIds)
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        $session->update([
+            'meta' => $this->mergeSessionMeta($session, [
+                'participant_ids' => $participantIds,
+            ]),
+        ]);
+
+        $freshSession = $session->fresh(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name', 'historyMessage']);
+
+        foreach ($invitedUserIds as $invitedUserId) {
+            CallGroupInvite::dispatch($freshSession, (int) $invitedUserId, $authId);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'session' => $this->formatSession($freshSession),
+            'invited_user_ids' => $invitedUserIds->all(),
+        ]);
+    }
+
+    public function upgradeToVideo(CallSession $session): JsonResponse
+    {
+        $authId = $this->authUserId();
+
+        $this->authorizeParticipant($session);
+        abort_unless($session->status === 'active', 409, 'Call is not active.');
+
+        if ($session->call_type !== 'video') {
+            $session->update([
+                'call_type' => 'video',
+                'meta' => $this->mergeSessionMeta($session, [
+                    'call_mode' => 'video',
+                    'upgraded_to_video_at' => now()->toIso8601String(),
+                ]),
+            ]);
+        }
+
+        $freshSession = $session->fresh(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name', 'historyMessage']);
+        CallUpgradeVideo::dispatch($freshSession, $authId);
+
+        return response()->json([
+            'ok' => true,
+            'session' => $this->formatSession($freshSession),
+        ]);
+    }
+
     protected function formatSession(CallSession $session): array
     {
+        $participantUsers = $session->participantUsers();
+        $joinedParticipantIds = $session->joinedParticipantIds();
+        $authId = $this->authUserId();
+
         return [
             'uuid' => $session->uuid,
             'call_type' => $session->call_type,
@@ -254,6 +427,15 @@ class CallController extends Controller
             'accepted_at' => $session->accepted_at?->toIso8601String(),
             'ended_at' => $session->ended_at?->toIso8601String(),
             'timeout_seconds' => $this->ringTimeoutSeconds(),
+            'conversation_key' => data_get($session->meta, 'conversation_key'),
+            'participant_ids' => $session->participantIds(),
+            'joined_participant_ids' => $joinedParticipantIds,
+            'group_call_id' => $session->uuid,
+            'room_token' => $session->roomTokenFor($authId),
+            'room_url' => route('calls.room', [
+                'session' => $session->uuid,
+                'token' => $session->roomTokenFor($authId),
+            ]),
             'caller' => [
                 'id' => $session->caller?->id ? (int) $session->caller->id : null,
                 'name' => $session->caller?->name,
@@ -266,6 +448,13 @@ class CallController extends Controller
                 'avatar' => $session->callee?->avatar,
                 'user_name' => $session->callee?->user_name,
             ],
+            'participants' => $participantUsers->map(fn (User $user) => [
+                'id' => (int) $user->id,
+                'name' => $user->name,
+                'avatar' => $user->avatar,
+                'user_name' => $user->user_name,
+                'joined' => in_array((int) $user->id, $joinedParticipantIds, true),
+            ])->values()->all(),
         ];
     }
 
@@ -296,6 +485,8 @@ class CallController extends Controller
             'ended_at' => $session->ended_at?->toIso8601String(),
             'duration_seconds' => $durationSeconds,
             'timeout_seconds' => $this->ringTimeoutSeconds(),
+            'participant_ids' => $session->participantIds(),
+            'joined_participant_ids' => $session->joinedParticipantIds(),
         ], $extraMeta);
         $historyMessage->seen = false;
         $historyMessage->save();
@@ -334,7 +525,7 @@ class CallController extends Controller
 
     protected function ringTimeoutSeconds(): int
     {
-        return 35;
+        return 30;
     }
 
     protected function shouldExpireRingingSession(CallSession $session): bool
@@ -393,5 +584,71 @@ class CallController extends Controller
         return view('messenger.components.message-card', [
             'message' => $message,
         ])->render();
+    }
+
+    protected function buildSessionMeta(array $participantIds, array $joinedParticipantIds = [], ?string $conversationKey = null): array
+    {
+        $meta = [
+            'participant_ids' => collect($participantIds)
+                ->map(fn ($id) => (int) $id)
+                ->filter(fn ($id) => $id > 0)
+                ->unique()
+                ->values()
+                ->all(),
+            'joined_participant_ids' => collect($joinedParticipantIds)
+                ->map(fn ($id) => (int) $id)
+                ->filter(fn ($id) => $id > 0)
+                ->unique()
+                ->values()
+                ->all(),
+        ];
+
+        if ($conversationKey) {
+            $meta['conversation_key'] = $conversationKey;
+        }
+
+        return $meta;
+    }
+
+    protected function mergeSessionMeta(CallSession $session, array $changes): array
+    {
+        $meta = $session->meta ?? [];
+
+        foreach ($changes as $key => $value) {
+            if ($value === null || $value === []) {
+                unset($meta[$key]);
+                continue;
+            }
+
+            $meta[$key] = $value;
+        }
+
+        return empty($meta) ? [] : $meta;
+    }
+
+    protected function markParticipantJoined(CallSession $session, int $userId): bool
+    {
+        $joinedParticipantIds = collect($session->joinedParticipantIds())
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique();
+
+        if ($joinedParticipantIds->contains($userId)) {
+            return false;
+        }
+
+        $joinedParticipantIds = $joinedParticipantIds
+            ->push($userId)
+            ->unique()
+            ->values()
+            ->all();
+
+        $session->update([
+            'meta' => $this->mergeSessionMeta($session, [
+                'joined_participant_ids' => $joinedParticipantIds,
+            ]),
+        ]);
+
+        return true;
     }
 }

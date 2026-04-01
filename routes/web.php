@@ -4,6 +4,7 @@ use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\MessengerController;
 use App\Http\Controllers\CallController;
+use App\Http\Controllers\CallRoomController;
 use App\Http\Controllers\UserProfileController;
 
 /*
@@ -46,6 +47,9 @@ Route::group(['middleware' => 'auth'], function() {
     Route::post('messenger/calls/{session:uuid}/decline', [CallController::class, 'decline'])->name('messenger.calls.decline');
     Route::post('messenger/calls/{session:uuid}/signal', [CallController::class, 'signal'])->name('messenger.calls.signal');
     Route::delete('messenger/calls/{session:uuid}', [CallController::class, 'hangup'])->name('messenger.calls.hangup');
+    Route::get('call/{session:uuid}', [CallRoomController::class, 'show'])->name('calls.room');
+    Route::post('calls/{session:uuid}/group-invite', [CallController::class, 'groupInvite'])->name('calls.group-invite');
+    Route::post('calls/{session:uuid}/upgrade', [CallController::class, 'upgradeToVideo'])->name('calls.upgrade');
 
     //User Search Route
     Route::get('messenger/search', [MessengerController::class, 'search'])->name('messenger.search');

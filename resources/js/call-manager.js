@@ -1,26 +1,3 @@
-const DEFAULT_ICE_SERVERS = [
-    { urls: 'stun:stun.l.google.com:19302' },
-];
-
-function parseIceServers(rawValue)
-{
-    if (!rawValue) {
-        return DEFAULT_ICE_SERVERS;
-    }
-
-    try {
-        const parsed = JSON.parse(rawValue);
-
-        if (Array.isArray(parsed) && parsed.length > 0) {
-            return parsed;
-        }
-    } catch (error) {
-        // Fall back to the public STUN server below.
-    }
-
-    return DEFAULT_ICE_SERVERS;
-}
-
 function resolveAssetUrl(assetBaseUrl, path)
 {
     if (!path) {
@@ -56,43 +33,13 @@ function notify(type, message)
     }
 }
 
-function toDescriptionInit(description)
-{
-    if (!description) {
-        return null;
-    }
-
-    return {
-        type: description.type,
-        sdp: description.sdp,
-    };
-}
-
-function toCandidateInit(candidate)
-{
-    if (!candidate) {
-        return null;
-    }
-
-    if (typeof candidate.toJSON === 'function') {
-        return candidate.toJSON();
-    }
-
-    return {
-        candidate: candidate.candidate,
-        sdpMid: candidate.sdpMid,
-        sdpMLineIndex: candidate.sdpMLineIndex,
-        usernameFragment: candidate.usernameFragment,
-    };
-}
-
 function participantName(participant)
 {
     if (!participant) {
-        return 'Unknown user';
+        return 'Unknown person';
     }
 
-    return participant.name || participant.user_name || 'Unknown user';
+    return participant.name || participant.user_name || 'Unknown person';
 }
 
 function escapeHtml(value)
@@ -205,9 +152,14 @@ function resolveCallTitle(historyMessage, authId)
     }
 }
 
+function getConversationKey()
+{
+    return $('meta[name=conversation-key]').attr('content') || '';
+}
+
 function getSelectedConversationId()
 {
-    const conversationKey = $('meta[name=conversation-key]').attr('content') || '';
+    const conversationKey = getConversationKey();
 
     if (conversationKey.startsWith('group:')) {
         return 0;
@@ -229,52 +181,34 @@ class MessengerCallManager
         this.authId = Number($('meta[name=auth_id]').attr('content') || 0);
         this.csrfToken = $('meta[name=csrf_token]').attr('content') || '';
         this.assetUrl = $('meta[name=asset-url]').attr('content') || `${window.location.origin}/`;
-        this.iceServers = parseIceServers($('meta[name=webrtc-ice-servers]').attr('content'));
+        this.baseDocumentTitle = document.title;
 
-        this.$modal = $('#callModal');
+        this.$modal = $('#incoming-call-modal');
         this.$title = this.$modal.find('.call-title');
         this.$status = this.$modal.find('.call-status');
-        this.$placeholder = this.$modal.find('.call-placeholder');
         this.$participantAvatar = this.$modal.find('.call-participant-avatar');
         this.$participantName = this.$modal.find('.call-participant-name');
-        this.$heroAvatar = this.$modal.find('.call-hero-avatar');
-        this.$heroName = this.$modal.find('.call-hero-name');
         this.$mediaLabel = this.$modal.find('.call-media-label');
         this.$timerLabel = this.$modal.find('.call-screen__timer-label');
         this.$duration = this.$modal.find('.call-duration');
-        this.$remoteVideo = this.$modal.find('.call-remote-video');
-        this.$localVideo = this.$modal.find('.call-local-video');
-        this.$localVideoShell = this.$modal.find('.call-local-video-shell');
-        this.$incomingActions = this.$modal.find('.incoming-call-actions');
         this.$acceptButton = this.$modal.find('.accept-call');
         this.$declineButton = this.$modal.find('.decline-call');
-        this.$hangupButton = this.$modal.find('.hangup-call');
-        this.$closeButton = this.$modal.find('.call-close');
-        this.$screenShareButton = this.$modal.find('.toggle-screen-share');
 
-        this.modalInstance = null;
         this.session = null;
-        this.role = 'idle';
-        this.callType = 'video';
-        this.localStream = null;
-        this.peerConnection = null;
-        this.remoteStream = null;
         this.sessionChannelName = null;
-        this.pendingCandidates = [];
-        this.negotiationStarted = false;
+        this.role = 'idle';
+        this.latestHistoryMessage = null;
         this.ringtoneAudio = null;
         this.ringtoneContext = null;
         this.ringtoneInterval = null;
-        this.callTimer = null;
-        this.callStartedAt = null;
         this.pendingCallTimer = null;
         this.pendingCallDeadlineAt = null;
         this.pendingCallTimeoutFired = false;
-        this.latestHistoryMessage = null;
-        this.screenShareStream = null;
         this.activeIncomingNotification = null;
         this.titlePulseTimer = null;
-        this.baseDocumentTitle = document.title;
+        this.callSyncChannel = typeof window.BroadcastChannel === 'function'
+            ? new window.BroadcastChannel('messenger-call-sync')
+            : null;
         this.initialized = false;
     }
 
@@ -284,26 +218,12 @@ class MessengerCallManager
             return;
         }
 
-        this.modalInstance = this.getModalInstance();
         this.bindEvents();
         this.armNotificationPermissionRequest();
         this.subscribeToInvitationChannel();
+        this.bindCallSyncChannel();
         this.resetModalUI();
         this.initialized = true;
-    }
-
-    getModalInstance()
-    {
-        return {
-            show: () => {
-                this.$modal.addClass('is-visible').attr('aria-hidden', 'false');
-                $('body').addClass('call-screen-open');
-            },
-            hide: () => {
-                this.$modal.removeClass('is-visible').attr('aria-hidden', 'true');
-                $('body').removeClass('call-screen-open');
-            },
-        };
     }
 
     bindEvents()
@@ -317,53 +237,62 @@ class MessengerCallManager
                 await this.startOutgoingCall(callType);
             });
 
-        this.$acceptButton
-            .off('click.callManager')
-            .on('click.callManager', async (event) => {
-                event.preventDefault();
-                await this.acceptCurrentCall();
-            });
-
-        this.$declineButton
-            .off('click.callManager')
-            .on('click.callManager', async (event) => {
-                event.preventDefault();
-                await this.endCurrentCall('decline');
-            });
-
-        this.$hangupButton
-            .off('click.callManager')
-            .on('click.callManager', async (event) => {
-                event.preventDefault();
-                await this.endCurrentCall('hangup');
-            });
-
-        this.$screenShareButton
-            .off('click.callManager')
-            .on('click.callManager', async (event) => {
-                event.preventDefault();
-                await this.toggleScreenShare();
-            });
-
-        this.$closeButton
-            .off('click.callManager')
-            .on('click.callManager', async (event) => {
-                event.preventDefault();
-                await this.endCurrentCall(this.role === 'incoming' ? 'decline' : 'hangup');
-            });
-
-        $(window).off('beforeunload.callManager').on('beforeunload.callManager', () => {
-            this.stopMediaStream();
-            this.closePeerConnection();
+        this.$acceptButton.off('click.callManager').on('click.callManager', async (event) => {
+            event.preventDefault();
+            await this.acceptCurrentCall();
         });
+
+        this.$declineButton.off('click.callManager').on('click.callManager', async (event) => {
+            event.preventDefault();
+            await this.endCurrentCall('decline');
+        });
+
+        this.$modal.find('.incoming-call-modal__backdrop').off('click.callManager').on('click.callManager', (event) => {
+            event.preventDefault();
+            this.showModal();
+        });
+    }
+
+    bindCallSyncChannel()
+    {
+        if (!this.callSyncChannel) {
+            return;
+        }
+
+        this.callSyncChannel.onmessage = (event) => {
+            const payload = event?.data || {};
+
+            if (!payload?.session_uuid || payload.session_uuid !== this.session?.uuid) {
+                return;
+            }
+
+            if (payload.type === 'call_accepted_in_other_tab') {
+                this.stopRingtone();
+                this.stopPendingCallTimer(false);
+                this.stopAttentionPulse();
+                this.closeIncomingCallNotifications(this.session?.uuid).catch(() => {});
+                this.role = 'external';
+                this.hideModal();
+            }
+
+            if (payload.type === 'call_ended_in_room') {
+                this.cleanup({ leaveSession: true });
+                this.hideModal();
+            }
+        };
     }
 
     subscribeToInvitationChannel()
     {
         const channelName = `call.user.${this.authId}`;
+        const channel = window.Echo.private(channelName);
 
-        window.Echo.private(channelName).listen('.CallInvitation', (event) => {
-            this.handleIncomingInvitation(event);
+        channel.listen('.CallInvitation', (event) => {
+            this.handleIncomingInvitation(event).catch(() => {});
+        });
+
+        channel.listen('.CallGroupInvite', (event) => {
+            this.handleIncomingInvitation(event).catch(() => {});
         });
     }
 
@@ -378,91 +307,48 @@ class MessengerCallManager
         }
 
         this.sessionChannelName = `call.session.${uuid}`;
-
         window.Echo.private(this.sessionChannelName).listen('.CallSignal', (event) => {
-            this.handleSessionSignal(event);
+            this.handleSessionSignal(event).catch(() => {});
         });
-    }
-
-    isBusy()
-    {
-        return this.role !== 'idle';
     }
 
     resetModalUI()
     {
-        this.$title.text('Call');
-        this.updateStatus('Waiting...', 'muted');
-        this.$incomingActions.addClass('d-none');
-        this.$hangupButton.find('span').text('End call');
+        this.$title.text('Incoming call');
         this.$participantName.text('Ready to connect');
-        this.$heroName.text('Ready to connect');
-        this.$mediaLabel.text('Video call');
-        this.$timerLabel.text('Live');
-        this.$duration.text('00:00');
-        this.$placeholder.removeClass('d-none');
+        this.$status.text('Waiting…').removeClass('text-warning text-danger text-success');
+        this.$mediaLabel.text('Incoming call');
+        this.$timerLabel.text('Missed in');
+        this.$duration.text('00:30');
         this.$participantAvatar.css('background-image', `url("${resolveAssetUrl(this.assetUrl, 'default/avatar.png')}")`);
-        this.$heroAvatar.css('background-image', `url("${resolveAssetUrl(this.assetUrl, 'default/avatar.png')}")`);
-        this.$remoteVideo[0].srcObject = null;
-        this.$localVideo[0].srcObject = null;
-        this.$localVideo.addClass('d-none');
-        this.$localVideoShell.addClass('d-none');
-        this.$remoteVideo.css({ opacity: 1, pointerEvents: 'auto' });
-        this.$screenShareButton.addClass('d-none').removeClass('is-sharing');
-        this.$screenShareButton.find('span').text('Share screen');
-        this.pendingCallTimeoutFired = false;
+    }
+
+    showModal()
+    {
+        this.$modal.addClass('is-visible').attr('aria-hidden', 'false');
+        $('body').addClass('incoming-call-open');
+    }
+
+    hideModal()
+    {
+        this.$modal.removeClass('is-visible').attr('aria-hidden', 'true');
+        $('body').removeClass('incoming-call-open');
     }
 
     formatDuration(seconds)
     {
-        const totalSeconds = Math.max(0, Number(seconds || 0));
-        const hours = Math.floor(totalSeconds / 3600);
-        const minutes = Math.floor((totalSeconds % 3600) / 60);
-        const remainingSeconds = totalSeconds % 60;
+        const safeSeconds = Math.max(0, Math.floor(Number(seconds || 0)));
+        const minutes = Math.floor(safeSeconds / 60);
+        const remainder = safeSeconds % 60;
 
-        if (hours > 0) {
-            return [hours, minutes, remainingSeconds].map((part) => String(part).padStart(2, '0')).join(':');
-        }
-
-        return [minutes, remainingSeconds].map((part) => String(part).padStart(2, '0')).join(':');
-    }
-
-    startCallDurationTimer(startedAt = null)
-    {
-        this.stopPendingCallTimer(false);
-        this.stopCallDurationTimer();
-        this.$timerLabel.text('Live');
-
-        const parsedStart = startedAt ? new Date(startedAt) : new Date();
-        this.callStartedAt = Number.isNaN(parsedStart.getTime()) ? Date.now() : parsedStart.getTime();
-
-        const tick = () => {
-            const elapsedSeconds = Math.max(0, Math.floor((Date.now() - this.callStartedAt) / 1000));
-            this.$duration.text(this.formatDuration(elapsedSeconds));
-        };
-
-        tick();
-        this.callTimer = window.setInterval(tick, 1000);
-    }
-
-    stopCallDurationTimer()
-    {
-        if (this.callTimer) {
-            window.clearInterval(this.callTimer);
-            this.callTimer = null;
-        }
-
-        this.callStartedAt = null;
-        this.$duration.text('00:00');
+        return `${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`;
     }
 
     startPendingCallTimer(startedAt = null, timeoutSeconds = null)
     {
         this.stopPendingCallTimer(false);
-        this.stopCallDurationTimer();
-        this.$timerLabel.text('No answer in');
 
-        const safeTimeoutSeconds = Math.max(1, Number(timeoutSeconds || this.session?.timeout_seconds || 35));
+        const safeTimeoutSeconds = Math.max(1, Number(timeoutSeconds || this.session?.timeout_seconds || 30));
         const startedAtMs = (() => {
             const parsedDate = startedAt ? new Date(startedAt) : null;
 
@@ -473,6 +359,7 @@ class MessengerCallManager
 
         this.pendingCallDeadlineAt = startedAtMs + (safeTimeoutSeconds * 1000);
         this.pendingCallTimeoutFired = false;
+        this.$timerLabel.text('Missed in');
 
         const tick = () => {
             const remainingSeconds = Math.max(0, Math.ceil((this.pendingCallDeadlineAt - Date.now()) / 1000));
@@ -499,8 +386,8 @@ class MessengerCallManager
         this.pendingCallTimeoutFired = false;
 
         if (resetDisplay) {
-            this.$timerLabel.text('Live');
-            this.$duration.text('00:00');
+            this.$timerLabel.text('Missed in');
+            this.$duration.text('00:30');
         }
     }
 
@@ -510,23 +397,257 @@ class MessengerCallManager
             return;
         }
 
-        this.updateStatus('No answer', 'warning');
-        notify('info', 'Call was not answered.');
+        this.updateStatus('Missed call', 'warning');
         await this.endCurrentCall('timeout', true);
     }
 
-    getConversationPartnerId(session = this.session, historyMessage = null)
+    updateStatus(message, tone = '')
     {
-        const callerId = Number(session?.caller?.id || session?.caller_id || historyMessage?.from_id || 0);
-        const calleeId = Number(session?.callee?.id || session?.callee_id || historyMessage?.to_id || 0);
+        this.$status.removeClass('text-warning text-danger text-success').text(message);
 
-        if (!callerId || !calleeId) {
-            return Number(historyMessage?.from_id || 0) === this.authId
-                ? Number(historyMessage?.to_id || 0)
-                : Number(historyMessage?.from_id || 0);
+        if (tone) {
+            this.$status.addClass(`text-${tone}`);
+        }
+    }
+
+    setParticipantCard(participant)
+    {
+        const image = participant?.avatar || 'default/avatar.png';
+        const resolvedImage = resolveAssetUrl(this.assetUrl, image);
+        const name = participantName(participant);
+
+        this.$participantName.text(name);
+        this.$participantAvatar.css('background-image', `url("${resolvedImage}")`);
+    }
+
+    isBusy()
+    {
+        return !['idle', 'external'].includes(this.role);
+    }
+
+    async startOutgoingCall(callType)
+    {
+        const calleeId = getSelectedConversationId();
+
+        if (!calleeId) {
+            notify('error', 'Select a direct conversation before calling.');
+            return;
         }
 
-        return callerId === this.authId ? calleeId : callerId;
+        if (calleeId === this.authId) {
+            notify('error', 'You cannot call yourself.');
+            return;
+        }
+
+        if (this.isBusy()) {
+            notify('error', 'Finish the current call before starting a new one.');
+            return;
+        }
+
+        const roomWindow = window.open('about:blank', '_blank');
+
+        try {
+            const response = await $.ajax({
+                method: 'POST',
+                url: route('messenger.calls.store'),
+                data: {
+                    _token: this.csrfToken,
+                    callee_id: calleeId,
+                    call_type: callType,
+                    conversation_key: getConversationKey(),
+                },
+            });
+
+            this.session = response.session;
+            this.role = 'external';
+            this.subscribeToSessionChannel(this.session.uuid);
+            this.syncHistoryMessage(response.history_message, response.history_message_html, this.session);
+            this.openRoomWindow(response.session?.room_url, roomWindow);
+            notify('success', `${callTypeLabel(callType)} call started.`);
+        } catch (error) {
+            roomWindow?.close?.();
+            this.notifyAjaxError(error, 'Unable to start the call.');
+            this.cleanup({ leaveSession: true });
+        }
+    }
+
+    async handleIncomingInvitation(event)
+    {
+        const session = event?.session;
+
+        if (!session?.uuid || Number(event?.to_id || event?.invitedUserId || 0) !== this.authId) {
+            return;
+        }
+
+        if (this.isBusy()) {
+            await this.autoRejectIncomingInvitation(session.uuid);
+            return;
+        }
+
+        this.session = session;
+        this.role = 'incoming';
+        this.subscribeToSessionChannel(session.uuid);
+        this.setParticipantCard(session.caller);
+        this.$mediaLabel.text(event?.type === 'group' ? 'Group call' : `${callTypeLabel(session.call_type)} call`);
+        this.$title.text(event?.type === 'group' ? `${participantName(session.caller)} invited you` : `Incoming ${callTypeLabel(session.call_type)} call`);
+        this.updateStatus(event?.type === 'group' ? 'Join the live group call' : 'Incoming call', 'warning');
+        this.syncHistoryMessage(event.history_message, event.history_message_html, session);
+        this.startPendingCallTimer(event.history_message?.created_at, event.history_message?.meta?.timeout_seconds || session.timeout_seconds);
+        this.playRingtone();
+        this.startAttentionPulse(`${participantName(session.caller)} is calling`);
+        this.showModal();
+        await this.showIncomingCallNotification(session, event?.type === 'group');
+        notify('info', event?.type === 'group'
+            ? `${participantName(session.caller)} invited you into a group call.`
+            : `${participantName(session.caller)} is calling you.`);
+    }
+
+    async autoRejectIncomingInvitation(uuid)
+    {
+        try {
+            await $.ajax({
+                method: 'POST',
+                url: route('messenger.calls.decline', { session: uuid }),
+                data: {
+                    _token: this.csrfToken,
+                },
+            });
+        } catch (error) {
+            // Ignore busy auto-decline errors.
+        }
+    }
+
+    async acceptCurrentCall()
+    {
+        if (!this.session || this.role !== 'incoming') {
+            return;
+        }
+
+        const roomWindow = window.open('about:blank', '_blank');
+        this.vibrate([200]);
+        this.$acceptButton.prop('disabled', true);
+        this.$declineButton.prop('disabled', true);
+        this.updateStatus('Opening call room…', 'success');
+
+        try {
+            const response = await $.ajax({
+                method: 'POST',
+                url: route('messenger.calls.accept', { session: this.session.uuid }),
+                data: {
+                    _token: this.csrfToken,
+                },
+            });
+
+            this.session = response.session || this.session;
+            this.role = 'external';
+            this.syncHistoryMessage(response.history_message, response.history_message_html, this.session);
+            this.stopRingtone();
+            this.stopPendingCallTimer(false);
+            this.stopAttentionPulse();
+            await this.closeIncomingCallNotifications(this.session.uuid);
+            this.callSyncChannel?.postMessage({
+                type: 'call_accepted_in_other_tab',
+                session_uuid: this.session.uuid,
+            });
+            this.hideModal();
+            this.openRoomWindow(this.session?.room_url, roomWindow);
+        } catch (error) {
+            roomWindow?.close?.();
+            this.notifyAjaxError(error, 'Unable to answer the call.');
+            await this.endCurrentCall('decline', true);
+        } finally {
+            this.$acceptButton.prop('disabled', false);
+            this.$declineButton.prop('disabled', false);
+        }
+    }
+
+    async endCurrentCall(action = 'hangup', silent = false)
+    {
+        if (!this.session) {
+            this.cleanup({ leaveSession: true });
+            this.hideModal();
+            return;
+        }
+
+        const isDecline = action === 'decline';
+        const method = isDecline ? 'POST' : 'DELETE';
+        const url = isDecline
+            ? route('messenger.calls.decline', { session: this.session.uuid })
+            : route('messenger.calls.hangup', { session: this.session.uuid });
+
+        if (isDecline) {
+            this.vibrate([100, 50, 100]);
+        }
+
+        try {
+            const response = await $.ajax({
+                method,
+                url,
+                data: {
+                    _token: this.csrfToken,
+                },
+            });
+
+            this.syncHistoryMessage(response?.history_message, response?.history_message_html, this.session);
+        } catch (error) {
+            if (!silent) {
+                this.notifyAjaxError(error, 'Unable to finish the call.');
+            }
+        } finally {
+            this.stopRingtone();
+            this.stopPendingCallTimer(false);
+            this.stopAttentionPulse();
+            await this.closeIncomingCallNotifications(this.session?.uuid);
+            this.cleanup({ leaveSession: true });
+            this.hideModal();
+        }
+    }
+
+    async handleSessionSignal(event)
+    {
+        const session = event?.session;
+
+        if (!session?.uuid || session.uuid !== this.session?.uuid) {
+            return;
+        }
+
+        this.session = session;
+        this.syncHistoryMessage(event.history_message, event.history_message_html, session);
+
+        switch (event.type) {
+        case 'accepted':
+            this.stopRingtone();
+            this.stopPendingCallTimer(false);
+            this.stopAttentionPulse();
+            await this.closeIncomingCallNotifications(this.session.uuid);
+            if (this.role !== 'external') {
+                this.role = 'external';
+            }
+            break;
+        case 'declined':
+            this.stopRingtone();
+            this.stopPendingCallTimer(false);
+            this.stopAttentionPulse();
+            await this.closeIncomingCallNotifications(this.session.uuid);
+            notify('info', 'The call was declined.');
+            this.cleanup({ leaveSession: true });
+            this.hideModal();
+            break;
+        case 'hangup':
+            this.stopRingtone();
+            this.stopPendingCallTimer(false);
+            this.stopAttentionPulse();
+            await this.closeIncomingCallNotifications(this.session.uuid);
+            this.cleanup({ leaveSession: true });
+            this.hideModal();
+            break;
+        case 'group_participant_joined':
+        case 'group_participant_left':
+            // Keep the latest participant roster available to the room tab.
+            break;
+        default:
+            break;
+        }
     }
 
     syncHistoryMessage(historyMessage, historyMessageHtml, session = this.session)
@@ -565,6 +686,16 @@ class MessengerCallManager
             $chatBody.append($replacement);
             $chatBody.stop().animate({ scrollTop: $chatBody[0].scrollHeight });
         }
+    }
+
+    rehydrateHistoryMessage()
+    {
+        if (!this.latestHistoryMessage) {
+            return;
+        }
+
+        const { historyMessage, historyMessageHtml, session } = this.latestHistoryMessage;
+        this.syncHistoryMessage(historyMessage, historyMessageHtml, session);
     }
 
     renderHistoryMessageCard(historyMessage)
@@ -609,70 +740,109 @@ class MessengerCallManager
         `;
     }
 
-    rehydrateHistoryMessage()
+    getConversationPartnerId(session = this.session, historyMessage = null)
     {
-        if (!this.latestHistoryMessage) {
+        const callerId = Number(session?.caller?.id || session?.caller_id || historyMessage?.from_id || 0);
+        const calleeId = Number(session?.callee?.id || session?.callee_id || historyMessage?.to_id || 0);
+
+        if (!callerId || !calleeId) {
+            return Number(historyMessage?.from_id || 0) === this.authId
+                ? Number(historyMessage?.to_id || 0)
+                : Number(historyMessage?.from_id || 0);
+        }
+
+        return callerId === this.authId ? calleeId : callerId;
+    }
+
+    buildNotificationTargetUrl(session)
+    {
+        const callerId = Number(session?.caller?.id || 0);
+        const calleeId = Number(session?.callee?.id || 0);
+        const conversationId = callerId && callerId !== this.authId ? callerId : calleeId;
+        const url = new URL('messenger', this.assetUrl);
+
+        if (conversationId > 0) {
+            url.searchParams.set('conversation', `user:${conversationId}`);
+        }
+
+        return url.toString();
+    }
+
+    async showIncomingCallNotification(session, isGroupInvite = false)
+    {
+        if (!('Notification' in window) || Notification.permission !== 'granted') {
             return;
         }
 
-        const { historyMessage, historyMessageHtml, session } = this.latestHistoryMessage;
-        this.syncHistoryMessage(historyMessage, historyMessageHtml, session);
+        const title = isGroupInvite
+            ? `${participantName(session?.caller)} invited you`
+            : `${participantName(session?.caller)} is calling`;
+
+        const options = {
+            body: isGroupInvite
+                ? 'Tap to open the call room'
+                : `${callTypeLabel(session?.call_type || 'video')} call incoming`,
+            icon: resolveAssetUrl(this.assetUrl, session?.caller?.avatar || 'default/avatar.png'),
+            badge: resolveAssetUrl(this.assetUrl, 'assets/images/icon.png'),
+            tag: `incoming-call-${session?.uuid || 'call'}`,
+            renotify: true,
+            requireInteraction: true,
+            actions: [
+                { action: 'accept', title: 'Answer' },
+                { action: 'decline', title: 'Decline' },
+            ],
+            data: {
+                url: this.buildNotificationTargetUrl(session),
+                room_url: session?.room_url,
+                session_uuid: session?.uuid,
+            },
+        };
+
+        try {
+            const registration = await (window.__messengerServiceWorkerRegistrationPromise || Promise.resolve(null));
+
+            if (registration?.showNotification) {
+                await registration.showNotification(title, options);
+                return;
+            }
+        } catch (error) {
+            // Fall back to a window-level notification.
+        }
+
+        try {
+            this.activeIncomingNotification?.close();
+            this.activeIncomingNotification = new Notification(title, options);
+            this.activeIncomingNotification.onclick = () => {
+                window.focus();
+                this.showModal();
+                this.activeIncomingNotification?.close();
+            };
+        } catch (error) {
+            // Ignore desktop notification failures.
+        }
     }
 
-    updateStatus(message, tone = 'muted')
+    async closeIncomingCallNotifications(sessionUuid = this.session?.uuid)
     {
-        const tones = 'text-white-50 text-warning text-success text-danger text-info text-muted';
+        if (this.activeIncomingNotification) {
+            this.activeIncomingNotification.close();
+            this.activeIncomingNotification = null;
+        }
 
-        this.$status.removeClass(tones).text(message);
-
-        if (tone === 'muted') {
-            this.$status.addClass('text-white-50');
+        if (!sessionUuid) {
             return;
         }
 
-        this.$status.addClass(`text-${tone}`);
-    }
+        try {
+            const registration = await (window.__messengerServiceWorkerRegistrationPromise || Promise.resolve(null));
+            const notifications = await registration?.getNotifications?.({
+                tag: `incoming-call-${sessionUuid}`,
+            });
 
-    updateHangupLabel(label)
-    {
-        this.$hangupButton.find('span').text(label);
-    }
-
-    toggleIncomingActions(show)
-    {
-        this.$incomingActions.toggleClass('d-none', !show);
-    }
-
-    setParticipantCard(participant)
-    {
-        const image = participant?.avatar || 'default/avatar.png';
-        const resolvedImage = resolveAssetUrl(this.assetUrl, image);
-        const name = participantName(participant);
-
-        this.$participantName.text(name);
-        this.$heroName.text(name);
-        this.$participantAvatar.css('background-image', `url("${resolvedImage}")`);
-        this.$heroAvatar.css('background-image', `url("${resolvedImage}")`);
-    }
-
-    setCallMode(callType)
-    {
-        const isVideo = callType === 'video';
-
-        this.callType = isVideo ? 'video' : 'audio';
-        this.$mediaLabel.text(isVideo ? 'Video call' : 'Audio call');
-        this.$localVideo.toggleClass('d-none', !isVideo);
-        this.$localVideoShell.toggleClass('d-none', !isVideo);
-        this.$remoteVideo.css({
-            opacity: isVideo ? 1 : 0,
-            pointerEvents: isVideo ? 'auto' : 'none',
-        });
-
-        if (!isVideo) {
-            this.$placeholder.removeClass('d-none');
+            (notifications || []).forEach((notification) => notification.close());
+        } catch (error) {
+            // Ignore notification cleanup failures.
         }
-
-        this.updateScreenShareButton();
     }
 
     prepareRingtone()
@@ -684,7 +854,7 @@ class MessengerCallManager
         this.ringtoneAudio = new Audio(resolveAssetUrl(this.assetUrl, 'default/message-sound.mp3'));
         this.ringtoneAudio.preload = 'auto';
         this.ringtoneAudio.loop = true;
-        this.ringtoneAudio.volume = 0.45;
+        this.ringtoneAudio.volume = 0.58;
 
         return this.ringtoneAudio;
     }
@@ -698,7 +868,8 @@ class MessengerCallManager
         const now = this.ringtoneContext.currentTime;
         const tones = [
             { frequency: 880, offset: 0 },
-            { frequency: 660, offset: 0.24 },
+            { frequency: 660, offset: 0.18 },
+            { frequency: 932, offset: 0.38 },
         ];
 
         tones.forEach(({ frequency, offset }) => {
@@ -709,17 +880,40 @@ class MessengerCallManager
             oscillator.frequency.value = frequency;
 
             gain.gain.setValueAtTime(0.0001, now + offset);
-            gain.gain.exponentialRampToValueAtTime(0.12, now + offset + 0.02);
-            gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.22);
+            gain.gain.exponentialRampToValueAtTime(0.16, now + offset + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.28);
 
             oscillator.connect(gain);
             gain.connect(this.ringtoneContext.destination);
             oscillator.start(now + offset);
-            oscillator.stop(now + offset + 0.24);
+            oscillator.stop(now + offset + 0.3);
         });
     }
 
     playRingtone()
+    {
+        const audio = this.prepareRingtone();
+
+        if (audio) {
+            audio.currentTime = 0;
+
+            const playPromise = audio.play();
+
+            if (playPromise && typeof playPromise.then === 'function') {
+                playPromise.then(() => {
+                    return true;
+                }).catch(() => {
+                    this.playRingtoneWithWebAudioFallback();
+                });
+
+                return;
+            }
+        }
+
+        this.playRingtoneWithWebAudioFallback();
+    }
+
+    playRingtoneWithWebAudioFallback()
     {
         if (this.ringtoneInterval) {
             return;
@@ -727,37 +921,23 @@ class MessengerCallManager
 
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
 
-        if (AudioContextClass) {
-            try {
-                this.ringtoneContext = this.ringtoneContext || new AudioContextClass();
-
-                if (this.ringtoneContext.state === 'suspended') {
-                    this.ringtoneContext.resume().catch(() => {});
-                }
-
-                this.playSynthRingtoneBurst();
-                this.ringtoneInterval = window.setInterval(() => {
-                    this.playSynthRingtoneBurst();
-                }, 1600);
-
-                return;
-            } catch (error) {
-                // Fall back to the audio element below.
-            }
-        }
-
-        const audio = this.prepareRingtone();
-
-        if (!audio) {
+        if (!AudioContextClass) {
             return;
         }
 
-        audio.currentTime = 0;
+        try {
+            this.ringtoneContext = this.ringtoneContext || new AudioContextClass();
 
-        const playPromise = audio.play();
+            if (this.ringtoneContext.state === 'suspended') {
+                this.ringtoneContext.resume().catch(() => {});
+            }
 
-        if (playPromise && typeof playPromise.catch === 'function') {
-            playPromise.catch(() => {});
+            this.playSynthRingtoneBurst();
+            this.ringtoneInterval = window.setInterval(() => {
+                this.playSynthRingtoneBurst();
+            }, 1450);
+        } catch (error) {
+            // Ignore ringtone fallback failures.
         }
     }
 
@@ -768,12 +948,10 @@ class MessengerCallManager
             this.ringtoneInterval = null;
         }
 
-        if (!this.ringtoneAudio) {
-            return;
+        if (this.ringtoneAudio) {
+            this.ringtoneAudio.pause();
+            this.ringtoneAudio.currentTime = 0;
         }
-
-        this.ringtoneAudio.pause();
-        this.ringtoneAudio.currentTime = 0;
     }
 
     armNotificationPermissionRequest()
@@ -812,764 +990,45 @@ class MessengerCallManager
         document.title = this.baseDocumentTitle;
     }
 
-    buildNotificationTargetUrl(session)
+    vibrate(pattern)
     {
-        const callerId = Number(session?.caller?.id || 0);
-        const calleeId = Number(session?.callee?.id || 0);
-        const conversationId = callerId && callerId !== this.authId ? callerId : calleeId;
-        const url = new URL('messenger', this.assetUrl);
-
-        if (conversationId > 0) {
-            url.searchParams.set('conversation', `user:${conversationId}`);
+        if (navigator.vibrate) {
+            navigator.vibrate(pattern);
         }
-
-        return url.toString();
     }
 
-    async showIncomingCallNotification(session)
+    openRoomWindow(roomUrl, existingWindow = null)
     {
-        if (!('Notification' in window) || Notification.permission !== 'granted') {
+        if (!roomUrl) {
             return;
         }
 
-        const title = `${participantName(session?.caller)} is calling`;
-        const options = {
-            body: `${callTypeLabel(session?.call_type || 'video')} call incoming`,
-            icon: resolveAssetUrl(this.assetUrl, session?.caller?.avatar || 'default/avatar.png'),
-            badge: resolveAssetUrl(this.assetUrl, 'assets/images/icon.png'),
-            tag: `incoming-call-${session?.uuid || 'call'}`,
-            renotify: true,
-            requireInteraction: true,
-            data: {
-                url: this.buildNotificationTargetUrl(session),
-            },
-        };
-
-        try {
-            const registration = await (window.__messengerServiceWorkerRegistrationPromise || Promise.resolve(null));
-
-            if (registration?.showNotification) {
-                await registration.showNotification(title, options);
-                return;
-            }
-        } catch (error) {
-            // Fall through to the window notification below.
-        }
-
-        try {
-            this.activeIncomingNotification?.close();
-            this.activeIncomingNotification = new Notification(title, options);
-            this.activeIncomingNotification.onclick = () => {
-                window.focus();
-                this.showModal();
-                this.activeIncomingNotification?.close();
-            };
-        } catch (error) {
-            // Ignore desktop notification failures and keep the in-app modal flowing.
-        }
-    }
-
-    async closeIncomingCallNotifications(sessionUuid = this.session?.uuid)
-    {
-        if (this.activeIncomingNotification) {
-            this.activeIncomingNotification.close();
-            this.activeIncomingNotification = null;
-        }
-
-        if (!sessionUuid) {
+        if (existingWindow && !existingWindow.closed) {
+            existingWindow.location.href = roomUrl;
+            existingWindow.focus();
             return;
         }
 
-        try {
-            const registration = await (window.__messengerServiceWorkerRegistrationPromise || Promise.resolve(null));
-            const notifications = await registration?.getNotifications?.({
-                tag: `incoming-call-${sessionUuid}`,
-            });
+        const openedWindow = window.open(roomUrl, '_blank');
 
-            (notifications || []).forEach((notification) => notification.close());
-        } catch (error) {
-            // Ignore notification cleanup failures.
+        if (!openedWindow) {
+            window.location.href = roomUrl;
         }
-    }
-
-    blurFocusedElement()
-    {
-        if (document.activeElement && typeof document.activeElement.blur === 'function') {
-            document.activeElement.blur();
-        }
-    }
-
-    showModal()
-    {
-        this.modalInstance.show();
-    }
-
-    hideModal()
-    {
-        this.blurFocusedElement();
-        this.modalInstance.hide();
-    }
-
-    async startOutgoingCall(callType)
-    {
-        const calleeId = getSelectedConversationId();
-
-        if (!calleeId) {
-            notify('error', 'Select a conversation before calling.');
-            return;
-        }
-
-        if (calleeId === this.authId) {
-            notify('error', 'You cannot call yourself.');
-            return;
-        }
-
-        if (this.isBusy()) {
-            notify('error', 'Finish the current call before starting a new one.');
-            return;
-        }
-
-        this.cleanup({ leaveSession: true });
-        this.role = 'dialing';
-        this.callType = callType;
-        this.updateStatus(
-            callType === 'video' ? 'Requesting camera and microphone...' : 'Requesting microphone...',
-            'warning'
-        );
-
-        try {
-            await this.ensureLocalStream(callType);
-
-            const response = await $.ajax({
-                method: 'POST',
-                url: route('messenger.calls.store'),
-                data: {
-                    _token: this.csrfToken,
-                    callee_id: calleeId,
-                    call_type: callType,
-                },
-            });
-
-            this.session = response.session;
-            this.role = 'caller';
-            this.callType = this.session.call_type || callType;
-            this.negotiationStarted = false;
-            this.pendingCandidates = [];
-
-            this.setParticipantCard(this.session.callee);
-            this.setCallMode(this.callType);
-            this.$title.text(
-                this.session.status === 'active'
-                    ? `In call with ${participantName(this.session.callee)}`
-                    : `${callTypeLabel(this.callType)} call to ${participantName(this.session.callee)}`
-            );
-            this.updateStatus(
-                this.session.status === 'active' ? 'Connected' : 'Ringing...',
-                this.session.status === 'active' ? 'success' : 'warning'
-            );
-            this.updateHangupLabel(this.session.status === 'active' ? 'Hang up' : 'Cancel call');
-            this.toggleIncomingActions(false);
-            this.syncHistoryMessage(response.history_message, response.history_message_html, this.session);
-            if (this.session.status === 'active') {
-                this.stopRingtone();
-                this.startCallDurationTimer(response.history_message?.meta?.started_at || this.session.accepted_at);
-            } else {
-                this.startPendingCallTimer(response.history_message?.created_at, response.history_message?.meta?.timeout_seconds || this.session.timeout_seconds);
-            }
-            this.updateScreenShareButton();
-            this.showModal();
-            this.subscribeToSessionChannel(this.session.uuid);
-        } catch (error) {
-            this.notifyAjaxError(error, 'Unable to start the call.');
-            this.cleanup({ leaveSession: true });
-            this.hideModal();
-        }
-    }
-
-    async handleIncomingInvitation(event)
-    {
-        const session = event?.session;
-
-        if (!session?.uuid || Number(event?.to_id) !== this.authId) {
-            return;
-        }
-
-        if (this.session?.uuid === session.uuid) {
-            return;
-        }
-
-        if (this.isBusy()) {
-            await this.autoRejectIncomingInvitation(session.uuid);
-            return;
-        }
-
-        this.cleanup({ leaveSession: true });
-        this.session = session;
-        this.role = 'incoming';
-        this.callType = session.call_type || 'video';
-        this.negotiationStarted = false;
-        this.pendingCandidates = [];
-
-        this.setParticipantCard(session.caller);
-        this.$title.text(`Incoming ${callTypeLabel(this.callType)} call`);
-        this.setCallMode(this.callType);
-        this.updateStatus('Incoming call', 'warning');
-        this.updateHangupLabel('Decline');
-        this.toggleIncomingActions(true);
-        this.syncHistoryMessage(event.history_message, event.history_message_html, session);
-        this.startPendingCallTimer(event.history_message?.created_at, event.history_message?.meta?.timeout_seconds || session.timeout_seconds);
-        this.playRingtone();
-        this.startAttentionPulse(`${participantName(session.caller)} is calling`);
-        this.subscribeToSessionChannel(session.uuid);
-        this.showModal();
-        await this.showIncomingCallNotification(session);
-
-        notify('info', `${participantName(session.caller)} is calling you.`);
-    }
-
-    async autoRejectIncomingInvitation(uuid)
-    {
-        try {
-            await $.ajax({
-                method: 'POST',
-                url: route('messenger.calls.decline', { session: uuid }),
-                data: {
-                    _token: this.csrfToken,
-                },
-            });
-        } catch (error) {
-            // Ignore auto-decline errors. The caller will time out or hang up on their side.
-        }
-    }
-
-    async acceptCurrentCall()
-    {
-        if (!this.session || this.role !== 'incoming') {
-            return;
-        }
-
-        this.setActionButtonsDisabled(true);
-        this.updateStatus('Connecting...', 'warning');
-
-        try {
-            await this.ensureLocalStream(this.callType);
-            await this.ensurePeerConnection();
-
-            const response = await $.ajax({
-                method: 'POST',
-                url: route('messenger.calls.accept', { session: this.session.uuid }),
-                data: {
-                    _token: this.csrfToken,
-                },
-            });
-
-            this.session = response.session;
-            this.role = 'callee';
-            this.callType = this.session.call_type || this.callType;
-            this.stopRingtone();
-            this.stopPendingCallTimer(false);
-            this.stopAttentionPulse();
-            await this.closeIncomingCallNotifications(this.session.uuid);
-            this.setParticipantCard(this.session.caller);
-            this.setCallMode(this.callType);
-            this.toggleIncomingActions(false);
-            this.updateHangupLabel('Hang up');
-            this.updateStatus('Connected', 'success');
-            this.syncHistoryMessage(response.history_message, response.history_message_html, this.session);
-            this.startCallDurationTimer(response.history_message?.meta?.started_at || this.session.accepted_at);
-            this.updateScreenShareButton();
-        } catch (error) {
-            this.notifyAjaxError(error, 'Unable to accept the call.');
-            await this.endCurrentCall('decline', true);
-        } finally {
-            this.setActionButtonsDisabled(false);
-        }
-    }
-
-    async endCurrentCall(action = 'hangup', silent = false)
-    {
-        if (!this.session) {
-            this.cleanup({ leaveSession: true });
-            this.hideModal();
-            return;
-        }
-
-        const isDecline = action === 'decline';
-        const method = isDecline ? 'POST' : 'DELETE';
-        const url = isDecline
-            ? route('messenger.calls.decline', { session: this.session.uuid })
-            : route('messenger.calls.hangup', { session: this.session.uuid });
-
-        try {
-            const response = await $.ajax({
-                method,
-                url,
-                data: {
-                    _token: this.csrfToken,
-                },
-            });
-
-            this.syncHistoryMessage(response?.history_message, response?.history_message_html, this.session);
-        } catch (error) {
-            if (!silent) {
-                this.notifyAjaxError(error, 'Unable to finish the call.');
-            }
-        } finally {
-            this.stopRingtone();
-            this.stopPendingCallTimer(false);
-            this.stopAttentionPulse();
-            await this.closeIncomingCallNotifications(this.session?.uuid);
-            this.cleanup({ leaveSession: true });
-            this.hideModal();
-        }
-    }
-
-    async handleSessionSignal(event)
-    {
-        const session = event?.session;
-
-        if (!session?.uuid || Number(event?.to_id) !== this.authId) {
-            return;
-        }
-
-        if (this.session?.uuid && this.session.uuid !== session.uuid) {
-            return;
-        }
-
-        this.session = session;
-        this.syncHistoryMessage(event.history_message, event.history_message_html, session);
-
-        switch (event.type) {
-        case 'accepted':
-            this.stopRingtone();
-            this.stopPendingCallTimer(false);
-            this.stopAttentionPulse();
-            await this.closeIncomingCallNotifications(this.session.uuid);
-            this.updateScreenShareButton();
-            if (this.role === 'caller' && !this.negotiationStarted) {
-                this.$title.text(`In call with ${participantName(this.session.callee)}`);
-                this.updateStatus('Connecting...', 'warning');
-                this.startCallDurationTimer(event.history_message?.meta?.started_at || this.session.accepted_at);
-                await this.startCallerNegotiation();
-            }
-            break;
-        case 'declined':
-            this.stopRingtone();
-            this.stopPendingCallTimer(false);
-            this.stopAttentionPulse();
-            await this.closeIncomingCallNotifications(this.session.uuid);
-            notify('info', 'The call was declined.');
-            this.updateStatus('Call declined', 'danger');
-            this.stopCallDurationTimer();
-            this.cleanup({ leaveSession: true });
-            this.hideModal();
-            break;
-        case 'hangup':
-            this.stopRingtone();
-            this.stopPendingCallTimer(false);
-            this.stopAttentionPulse();
-            await this.closeIncomingCallNotifications(this.session.uuid);
-            this.updateStatus(
-                event?.history_message?.meta?.status === 'missed' ? 'Missed call' : 'Call ended',
-                event?.history_message?.meta?.status === 'missed' ? 'warning' : 'muted'
-            );
-            this.stopCallDurationTimer();
-            this.cleanup({ leaveSession: true });
-            this.hideModal();
-            break;
-        case 'signal':
-            await this.handleSignalPayload(event.payload || {});
-            break;
-        default:
-            break;
-        }
-    }
-
-    async handleSignalPayload(payload)
-    {
-        if (!payload.signal_type || !payload.signal_data) {
-            return;
-        }
-
-        if (payload.signal_type === 'offer') {
-            await this.receiveOffer(payload.signal_data);
-        } else if (payload.signal_type === 'answer') {
-            await this.receiveAnswer(payload.signal_data);
-        } else if (payload.signal_type === 'candidate') {
-            await this.receiveCandidate(payload.signal_data);
-        }
-    }
-
-    async startCallerNegotiation()
-    {
-        await this.ensurePeerConnection();
-
-        if (!this.peerConnection || !this.session) {
-            return;
-        }
-
-        this.negotiationStarted = true;
-
-        try {
-            const offer = await this.peerConnection.createOffer();
-            await this.peerConnection.setLocalDescription(offer);
-            await this.sendSignal('offer', toDescriptionInit(offer));
-            this.updateStatus('Waiting for answer...', 'info');
-        } catch (error) {
-            this.negotiationStarted = false;
-            this.notifyAjaxError(error, 'Unable to create the call offer.');
-            await this.endCurrentCall('hangup', true);
-        }
-    }
-
-    async receiveOffer(signalData)
-    {
-        try {
-            await this.ensurePeerConnection();
-            await this.peerConnection.setRemoteDescription(new RTCSessionDescription(signalData));
-            await this.flushPendingCandidates();
-
-            const answer = await this.peerConnection.createAnswer();
-            await this.peerConnection.setLocalDescription(answer);
-            await this.sendSignal('answer', toDescriptionInit(answer));
-            this.updateStatus('Connected', 'success');
-        } catch (error) {
-            this.notifyAjaxError(error, 'Unable to answer the call.');
-            await this.endCurrentCall('hangup', true);
-        }
-    }
-
-    async receiveAnswer(signalData)
-    {
-        try {
-            await this.ensurePeerConnection();
-            await this.peerConnection.setRemoteDescription(new RTCSessionDescription(signalData));
-            await this.flushPendingCandidates();
-            this.stopRingtone();
-            this.updateStatus('Connected', 'success');
-            if (!this.callTimer) {
-                this.startCallDurationTimer(this.callStartedAt || this.session?.accepted_at || this.session?.history_message?.meta?.started_at);
-            }
-
-            if (this.callType === 'video') {
-                this.$placeholder.addClass('d-none');
-            }
-        } catch (error) {
-            this.notifyAjaxError(error, 'Unable to connect the call.');
-            await this.endCurrentCall('hangup', true);
-        }
-    }
-
-    async receiveCandidate(candidateData)
-    {
-        if (!candidateData) {
-            return;
-        }
-
-        if (!this.peerConnection || !this.peerConnection.remoteDescription) {
-            this.pendingCandidates.push(candidateData);
-            return;
-        }
-
-        try {
-            await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidateData));
-        } catch (error) {
-            // Ignore individual ICE candidate failures to keep the call flowing.
-        }
-    }
-
-    async flushPendingCandidates()
-    {
-        if (!this.peerConnection || !this.peerConnection.remoteDescription) {
-            return;
-        }
-
-        while (this.pendingCandidates.length > 0) {
-            const candidate = this.pendingCandidates.shift();
-
-            try {
-                await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-            } catch (error) {
-                // Keep flushing even if one candidate is invalid.
-            }
-        }
-    }
-
-    async ensureLocalStream(callType)
-    {
-        if (this.localStream) {
-            this.attachLocalStream(this.localStream);
-            return this.localStream;
-        }
-
-        const stream = await navigator.mediaDevices.getUserMedia({
-            audio: true,
-            video: callType === 'video' ? { facingMode: 'user' } : false,
-        });
-
-        this.localStream = stream;
-        this.attachLocalStream(stream);
-
-        return stream;
-    }
-
-    attachLocalStream(stream)
-    {
-        if (!stream) {
-            return;
-        }
-
-        this.$localVideo[0].srcObject = stream;
-        this.$localVideo[0].muted = true;
-        this.$localVideo[0].play().catch(() => {});
-    }
-
-    getPeerSender(kind)
-    {
-        return this.peerConnection?.getSenders?.().find((sender) => sender.track?.kind === kind) || null;
-    }
-
-    updateScreenShareButton()
-    {
-        if (!this.$screenShareButton.length) {
-            return;
-        }
-
-        const canShare = this.callType === 'video' && this.session?.status === 'active';
-        const isSharing = !!this.screenShareStream;
-
-        this.$screenShareButton.toggleClass('d-none', !canShare);
-        this.$screenShareButton.toggleClass('is-sharing', isSharing);
-        this.$screenShareButton.find('span').text(isSharing ? 'Stop sharing' : 'Share screen');
-    }
-
-    async toggleScreenShare()
-    {
-        if (this.screenShareStream) {
-            await this.stopScreenShare();
-            return;
-        }
-
-        if (!navigator.mediaDevices?.getDisplayMedia) {
-            notify('error', 'Screen sharing is not supported in this browser.');
-            return;
-        }
-
-        if (this.callType !== 'video' || this.session?.status !== 'active') {
-            notify('error', 'Start a connected video call before sharing your screen.');
-            return;
-        }
-
-        try {
-            const stream = await navigator.mediaDevices.getDisplayMedia({
-                video: {
-                    frameRate: 15,
-                },
-                audio: false,
-            });
-            const screenTrack = stream.getVideoTracks()[0];
-            const sender = this.getPeerSender('video');
-
-            if (!screenTrack || !sender) {
-                stream.getTracks().forEach((track) => track.stop());
-                notify('error', 'Unable to start screen sharing right now.');
-                return;
-            }
-
-            await sender.replaceTrack(screenTrack);
-            screenTrack.onended = () => {
-                this.stopScreenShare(true).catch(() => {});
-            };
-
-            this.screenShareStream = stream;
-            this.$localVideo[0].srcObject = stream;
-            this.$localVideo[0].muted = true;
-            this.$localVideo[0].play().catch(() => {});
-            this.updateScreenShareButton();
-            notify('success', 'Screen sharing is live.');
-        } catch (error) {
-            if (!['AbortError', 'NotAllowedError'].includes(error?.name || '')) {
-                notify('error', 'Unable to share your screen.');
-            }
-        }
-    }
-
-    async stopScreenShare(silent = false, restoreCamera = true)
-    {
-        if (!this.screenShareStream) {
-            this.updateScreenShareButton();
-            return;
-        }
-
-        const activeScreenStream = this.screenShareStream;
-        this.screenShareStream = null;
-        activeScreenStream.getTracks().forEach((track) => track.stop());
-
-        const cameraTrack = restoreCamera ? this.localStream?.getVideoTracks?.()[0] : null;
-        const sender = restoreCamera ? this.getPeerSender('video') : null;
-
-        if (sender && cameraTrack) {
-            try {
-                await sender.replaceTrack(cameraTrack);
-            } catch (error) {
-                // Keep the call alive even if the camera handoff fails.
-            }
-        }
-
-        if (restoreCamera && this.localStream) {
-            this.attachLocalStream(this.localStream);
-        }
-
-        this.updateScreenShareButton();
-
-        if (!silent) {
-            notify('info', 'Screen sharing stopped.');
-        }
-    }
-
-    async ensurePeerConnection()
-    {
-        if (this.peerConnection) {
-            return this.peerConnection;
-        }
-
-        const peerConnection = new RTCPeerConnection({
-            iceServers: this.iceServers,
-        });
-
-        this.remoteStream = new MediaStream();
-        this.$remoteVideo[0].srcObject = this.remoteStream;
-
-        if (this.localStream) {
-            this.localStream.getTracks().forEach((track) => {
-                peerConnection.addTrack(track, this.localStream);
-            });
-        }
-
-        peerConnection.ontrack = (event) => {
-            const [remoteStream] = event.streams;
-
-            if (remoteStream) {
-                this.$remoteVideo[0].srcObject = remoteStream;
-                this.$remoteVideo[0].play().catch(() => {});
-            } else if (event.track) {
-                this.remoteStream.addTrack(event.track);
-                this.$remoteVideo[0].srcObject = this.remoteStream;
-                this.$remoteVideo[0].play().catch(() => {});
-            }
-
-            if (this.callType === 'video') {
-                this.$placeholder.addClass('d-none');
-            }
-
-            this.updateStatus('Connected', 'success');
-        };
-
-        peerConnection.onicecandidate = async (event) => {
-            if (event.candidate) {
-                try {
-                    await this.sendSignal('candidate', toCandidateInit(event.candidate));
-                } catch (error) {
-                    // Ignore signalling hiccups; the browser will continue to try alternative candidates.
-                }
-            }
-        };
-
-        peerConnection.onconnectionstatechange = () => {
-            if (['failed', 'closed', 'disconnected'].includes(peerConnection.connectionState) && this.session) {
-                this.updateStatus('Connection lost', 'danger');
-            }
-        };
-
-        this.peerConnection = peerConnection;
-
-        return peerConnection;
-    }
-
-    async sendSignal(signalType, signalData)
-    {
-        if (!this.session?.uuid) {
-            return;
-        }
-
-        return $.ajax({
-            method: 'POST',
-            url: route('messenger.calls.signal', { session: this.session.uuid }),
-            data: {
-                _token: this.csrfToken,
-                signal_type: signalType,
-                signal_data: JSON.stringify(signalData),
-            },
-        });
-    }
-
-    setActionButtonsDisabled(disabled)
-    {
-        this.$acceptButton.prop('disabled', disabled);
-        this.$declineButton.prop('disabled', disabled);
-        this.$hangupButton.prop('disabled', disabled);
-        this.$closeButton.prop('disabled', disabled);
-        this.$screenShareButton.prop('disabled', disabled);
-    }
-
-    stopMediaStream()
-    {
-        if (!this.localStream) {
-            return;
-        }
-
-        this.localStream.getTracks().forEach((track) => track.stop());
-        this.localStream = null;
-    }
-
-    closePeerConnection()
-    {
-        if (this.peerConnection) {
-            this.peerConnection.ontrack = null;
-            this.peerConnection.onicecandidate = null;
-            this.peerConnection.onconnectionstatechange = null;
-            this.peerConnection.close();
-            this.peerConnection = null;
-        }
-
-        this.remoteStream = null;
-        this.negotiationStarted = false;
-    }
-
-    leaveSessionChannel()
-    {
-        if (this.sessionChannelName) {
-            window.Echo.leave(this.sessionChannelName);
-            this.sessionChannelName = null;
-        }
-    }
-
-    clearVideoElements()
-    {
-        this.$remoteVideo[0].srcObject = null;
-        this.$localVideo[0].srcObject = null;
     }
 
     cleanup({ leaveSession = true } = {})
     {
-        this.stopScreenShare(true, false).catch(() => {});
-        this.stopMediaStream();
-        this.closePeerConnection();
         this.stopRingtone();
         this.stopPendingCallTimer(false);
-        this.stopCallDurationTimer();
         this.stopAttentionPulse();
 
-        if (leaveSession) {
-            this.leaveSessionChannel();
+        if (leaveSession && this.sessionChannelName) {
+            window.Echo.leave(this.sessionChannelName);
+            this.sessionChannelName = null;
         }
 
         this.session = null;
         this.role = 'idle';
-        this.callType = 'video';
-        this.pendingCandidates = [];
-
-        this.clearVideoElements();
         this.resetModalUI();
     }
 

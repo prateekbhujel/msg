@@ -60,7 +60,9 @@ self.addEventListener('fetch', (event) => {
 });
 
 self.addEventListener('notificationclick', (event) => {
-    const targetUrl = event.notification?.data?.url || './messenger';
+    const action = event.action || '';
+    const notificationData = event.notification?.data || {};
+    const targetUrl = notificationData.url || './messenger';
 
     event.notification.close();
     event.waitUntil(
@@ -68,18 +70,70 @@ self.addEventListener('notificationclick', (event) => {
             type: 'window',
             includeUncontrolled: true,
         }).then((clients) => {
+            clients.forEach((client) => {
+                client.postMessage({
+                    type: 'notification_action',
+                    action,
+                    session_uuid: notificationData.session_uuid || null,
+                    room_url: notificationData.room_url || null,
+                });
+            });
+
             for (const client of clients) {
                 if ('focus' in client) {
-                    client.navigate(targetUrl).catch(() => null);
+                    const nextUrl = action === 'accept' && notificationData.room_url
+                        ? notificationData.room_url
+                        : targetUrl;
+
+                    client.navigate(nextUrl).catch(() => null);
                     return client.focus();
                 }
             }
 
             if (self.clients.openWindow) {
-                return self.clients.openWindow(targetUrl);
+                const nextUrl = action === 'accept' && notificationData.room_url
+                    ? notificationData.room_url
+                    : targetUrl;
+
+                return self.clients.openWindow(nextUrl);
             }
 
             return null;
         })
     );
+});
+
+self.addEventListener('push', (event) => {
+    let payload = {};
+
+    try {
+        payload = event.data?.json?.() || {};
+    } catch (error) {
+        payload = {};
+    }
+
+    if (payload.type !== 'incoming_call') {
+        return;
+    }
+
+    const title = payload.title || 'Incoming call';
+    const options = {
+        body: payload.body || 'Someone is calling you.',
+        icon: payload.icon || './pwa/icon-192.png',
+        badge: payload.badge || './pwa/icon-192.png',
+        tag: payload.tag || `incoming-call-${payload.session_uuid || 'call'}`,
+        requireInteraction: true,
+        renotify: true,
+        actions: [
+            { action: 'accept', title: 'Answer' },
+            { action: 'decline', title: 'Decline' },
+        ],
+        data: {
+            url: payload.url || './messenger',
+            room_url: payload.room_url || null,
+            session_uuid: payload.session_uuid || null,
+        },
+    };
+
+    event.waitUntil(self.registration.showNotification(title, options));
 });

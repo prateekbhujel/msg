@@ -3,6 +3,8 @@
  * | Global Variables |
  *  ------------------
 */
+import data from '@emoji-mart/data';
+import { Picker } from 'emoji-mart';
 import { initializeCallManager } from './call-manager';
 
 var temporaryMsgId = 0;
@@ -26,6 +28,8 @@ var typingIndicatorTimer = null;
 var typingPingTimer = null;
 var typingIndicatorHideTimer = null;
 var knownGroupConversationKeys = new Set();
+var composerEmojiPicker = null;
+var composerEmojiPickerVisible = false;
 
 const VOICE_RECORDING_MAX_SECONDS = 120;
 const REACTION_OPTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
@@ -33,11 +37,17 @@ const CHAT_THEME_STORAGE_KEY = 'messenger.theme.primary';
 const CHAT_THEME_LIGHT_STORAGE_KEY = 'messenger.theme.light';
 const CHAT_THEME_RGB_STORAGE_KEY = 'messenger.theme.rgb';
 const COMPOSER_EMOJI_SHORTCUTS = [
-    { pattern: /(^|\s):\)(?=\s|$)/g, replacement: '$1🙂' },
-    { pattern: /(^|\s):\((?=\s|$)/g, replacement: '$1🙁' },
+    { pattern: /(^|\s):\)(?=\s|$)/g, replacement: '$1😊' },
+    { pattern: /(^|\s):\((?=\s|$)/g, replacement: '$1😢' },
     { pattern: /(^|\s);\)(?=\s|$)/g, replacement: '$1😉' },
     { pattern: /(^|\s):D(?=\s|$)/g, replacement: '$1😄' },
     { pattern: /(^|\s):P(?=\s|$)/gi, replacement: '$1😛' },
+    { pattern: /(^|\s):\|(?=\s|$)/g, replacement: '$1😐' },
+    { pattern: /(^|\s):O(?=\s|$)/gi, replacement: '$1😮' },
+    { pattern: /(^|\s):'\((?=\s|$)/g, replacement: '$1😭' },
+    { pattern: /(^|\s)B\)(?=\s|$)/g, replacement: '$1😎' },
+    { pattern: /(^|\s)>\:\((?=\s|$)/g, replacement: '$1😠' },
+    { pattern: /(^|\s):\*(?=\s|$)/g, replacement: '$1😘' },
     { pattern: /(^|\s)<3(?=\s|$)/g, replacement: '$1❤️' },
 ];
 
@@ -62,6 +72,7 @@ const messageForm             = $(".message-form"),
       voiceRecordStatus       = $(".voice-record-status"),
       voiceRecordToggleIcon   = $(".voice-record-toggle i"),
       emojiTriggerButton      = $(".composer-emoji-trigger"),
+      composerEmojiPopover    = $("[data-composer-emoji-popover]"),
       typingIndicatorLabel    = $(".messenger-typing-indicator"),
       createGroupForm         = $(".create-group-form"),
       themeSwatches           = $("[data-chat-theme-color]");
@@ -406,6 +417,88 @@ function focusComposer()
     }
 
     messageInput.trigger('focus');
+}
+
+function ensureComposerEmojiPicker()
+{
+    if (!composerEmojiPopover.length || composerEmojiPicker) {
+        return composerEmojiPicker;
+    }
+
+    composerEmojiPicker = new Picker({
+        data,
+        theme: 'light',
+        previewPosition: 'none',
+        skinTonePosition: 'none',
+        navPosition: 'bottom',
+        maxFrequentRows: 1,
+        set: 'native',
+        onEmojiSelect: (emoji) => {
+            insertEmojiIntoComposer(emoji?.native || '');
+            toggleComposerEmojiPopover(false);
+        },
+    });
+
+    composerEmojiPopover.empty().append(composerEmojiPicker);
+
+    return composerEmojiPicker;
+}
+
+function positionComposerEmojiPopover()
+{
+    if (!composerEmojiPopover.length) {
+        return;
+    }
+
+    if (window.innerWidth >= 768) {
+        composerEmojiPopover.css({
+            '--composer-emoji-bottom': 'calc(100% + 12px)',
+        });
+
+        return;
+    }
+
+    const visualHeight = window.visualViewport?.height || window.innerHeight;
+    const visualOffsetTop = window.visualViewport?.offsetTop || 0;
+    const keyboardInset = Math.max(0, window.innerHeight - visualHeight - visualOffsetTop);
+
+    composerEmojiPopover.css({
+        '--composer-emoji-bottom': `${Math.max(keyboardInset + 94, 94)}px`,
+    });
+}
+
+function toggleComposerEmojiPopover(forceState = null)
+{
+    if (!composerEmojiPopover.length) {
+        return;
+    }
+
+    const shouldShow = forceState === null
+        ? !composerEmojiPickerVisible
+        : !!forceState;
+
+    composerEmojiPickerVisible = shouldShow;
+
+    if (shouldShow) {
+        ensureComposerEmojiPicker();
+        positionComposerEmojiPopover();
+    }
+
+    composerEmojiPopover.toggleClass('d-none', !shouldShow);
+}
+
+function insertEmojiIntoComposer(emoji)
+{
+    if (!emoji) {
+        return;
+    }
+
+    const currentValue = getComposerText();
+    const nextValue = normalizeComposerEmojiShortcuts(`${currentValue}${emoji}`);
+
+    setComposerText(nextValue);
+    queueTypingIndicator();
+    focusComposer();
 }
 
 function showTypingIndicator(name = 'Someone')
@@ -1779,6 +1872,7 @@ function messageFormReset()
     sendTypingState(false);
     messageForm.trigger("reset");
     setComposerText('');
+    toggleComposerEmojiPopover(false);
 
 }//End Method
 
@@ -2622,6 +2716,8 @@ $(document).ready(function ()
     $('body').on('input keyup', '.emojionearea-editor', queueTypingIndicator);
     messageInput.on('keyup', maybeApplyComposerEmojiShortcuts);
     $('body').on('keyup', '.emojionearea-editor', maybeApplyComposerEmojiShortcuts);
+    window.visualViewport?.addEventListener('resize', positionComposerEmojiPopover);
+    $(window).on('resize', positionComposerEmojiPopover);
 
     /**
      *  -------------------------------
@@ -2645,21 +2741,7 @@ $(document).ready(function ()
 
     emojiTriggerButton.on('click', function (e) {
         e.preventDefault();
-        const composer = getComposerEmojiArea();
-
-        if (!composer || typeof composer.showPicker !== 'function') {
-            focusComposer();
-            return;
-        }
-
-        const pickerIsOpen = $(composer.button).hasClass('active');
-
-        if (pickerIsOpen && typeof composer.hidePicker === 'function') {
-            composer.hidePicker();
-        } else {
-            composer.showPicker();
-        }
-
+        toggleComposerEmojiPopover();
         focusComposer();
     });
 
@@ -2707,6 +2789,10 @@ $(document).ready(function ()
     $('body').on('click', function (e) {
         if (!$(e.target).closest('.message-reaction-picker-wrap').length) {
             closeReactionPickers();
+        }
+
+        if (!$(e.target).closest('[data-composer-emoji-popover], .composer-emoji-trigger').length) {
+            toggleComposerEmojiPopover(false);
         }
     });
 

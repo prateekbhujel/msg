@@ -1,59 +1,34 @@
-<div id="callModal" class="call-screen" aria-hidden="true">
-    <div class="call-screen__backdrop"></div>
-    <div class="call-screen__shell">
-        <div class="call-screen__header">
-            <div class="call-screen__identity">
-                <div class="call-participant-avatar" style="background-image: url('{{ asset('default/avatar.png') }}');"></div>
-                <div class="call-screen__copy">
-                    <h5 class="call-title">Call</h5>
-                    <div class="call-participant-name">Ready to connect</div>
-                    <p class="call-status">Waiting...</p>
-                </div>
-            </div>
-            <div class="call-screen__timer">
-                <span class="call-screen__timer-label">Live</span>
-                <span class="call-duration">00:00</span>
-            </div>
-            <button type="button" class="call-close" aria-label="Close call view">
-                <i class="fas fa-times"></i>
-            </button>
+<div id="incoming-call-modal" class="incoming-call-modal" aria-hidden="true">
+    <div class="incoming-call-modal__backdrop"></div>
+    <section class="incoming-call-modal__sheet" role="dialog" aria-modal="true" aria-labelledby="incoming-call-title">
+        <div class="incoming-call-modal__handle" aria-hidden="true"></div>
+
+        <div class="incoming-call-modal__avatar-wrap">
+            <div class="incoming-call-modal__avatar call-participant-avatar" style="background-image: url('{{ asset('default/avatar.png') }}');"></div>
+            <div class="incoming-call-modal__pulse" aria-hidden="true"></div>
         </div>
 
-        <div class="call-stage">
-            <div class="call-stage__ambient"></div>
-            <video class="call-remote-video" autoplay playsinline></video>
-            <div class="call-placeholder">
-                <div class="call-hero-avatar" style="background-image: url('{{ asset('default/avatar.png') }}');"></div>
-                <div class="call-hero-copy">
-                    <div class="call-hero-name">Ready to connect</div>
-                    <div class="call-media-label">Video call</div>
-                </div>
-            </div>
-            <div class="call-local-video-shell">
-                <video class="call-local-video" autoplay playsinline muted></video>
-            </div>
+        <div class="incoming-call-modal__copy">
+            <p class="incoming-call-modal__eyebrow call-media-label">Incoming call</p>
+            <h2 id="incoming-call-title" class="incoming-call-modal__title call-title">Call</h2>
+            <p class="incoming-call-modal__name call-participant-name">Ready to connect</p>
+            <p class="incoming-call-modal__status call-status">Waiting…</p>
         </div>
 
-        <div class="incoming-call-actions d-none">
-            <button type="button" class="accept-call">
-                <i class="fas fa-phone"></i>
-                <span>Answer</span>
-            </button>
-            <button type="button" class="decline-call">
+        <div class="incoming-call-modal__timer">
+            <span class="call-screen__timer-label">Missed in</span>
+            <strong class="call-duration">00:30</strong>
+        </div>
+
+        <div class="incoming-call-modal__actions incoming-call-actions">
+            <button type="button" class="incoming-call-modal__button incoming-call-modal__button--decline decline-call">
                 <i class="fas fa-phone-slash"></i>
                 <span>Decline</span>
             </button>
-        </div>
-
-        <div class="call-screen__controls">
-            <button type="button" class="toggle-screen-share d-none">
-                <i class="fas fa-desktop"></i>
-                <span>Share screen</span>
-            </button>
-            <button type="button" class="hangup-call">
-                <i class="fas fa-phone-slash"></i>
-                <span>End call</span>
+            <button type="button" class="incoming-call-modal__button incoming-call-modal__button--accept accept-call">
+                <i class="fas fa-phone"></i>
+                <span>Answer</span>
             </button>
         </div>
-    </div>
+    </section>
 </div>

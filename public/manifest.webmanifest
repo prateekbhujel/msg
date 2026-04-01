@@ -7,6 +7,21 @@
     "display": "standalone",
     "background_color": "#f8fbff",
     "theme_color": "#2180f3",
+    "shortcuts": [
+        {
+            "name": "Start a call",
+            "short_name": "Call",
+            "description": "Open Messenger and jump straight into your conversations.",
+            "url": "./messenger",
+            "icons": [
+                {
+                    "src": "./pwa/icon-192.png",
+                    "sizes": "192x192",
+                    "type": "image/png"
+                }
+            ]
+        }
+    ],
     "icons": [
         {
             "src": "./pwa/icon-192.png",

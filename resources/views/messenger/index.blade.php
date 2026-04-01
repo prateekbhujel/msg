@@ -85,6 +85,7 @@
                         <textarea class="message-input" id="example1" rows="1" placeholder="Type a message.." name="message"></textarea>
                         <button type="submit" class="message-send-button" aria-label="Send message"><i class="fas fa-paper-plane"></i></button>
                     </form>
+                    <div class="composer-emoji-popover d-none" data-composer-emoji-popover></div>
                     <div class="voice-preview d-none"></div>
                 </div>
             </div>

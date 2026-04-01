@@ -81,7 +81,15 @@ class CallInvitation implements ShouldBroadcastNow
             'uuid' => $this->session->uuid,
             'call_type' => $this->session->call_type,
             'status' => $this->session->status,
-            'timeout_seconds' => (int) data_get($this->session->historyMessage?->meta, 'timeout_seconds', 35),
+            'timeout_seconds' => (int) data_get($this->session->historyMessage?->meta, 'timeout_seconds', 30),
+            'participant_ids' => $this->session->participantIds(),
+            'joined_participant_ids' => $this->session->joinedParticipantIds(),
+            'group_call_id' => $this->session->uuid,
+            'room_token' => $this->session->roomTokenFor((int) $this->session->callee_id),
+            'room_url' => route('calls.room', [
+                'session' => $this->session->uuid,
+                'token' => $this->session->roomTokenFor((int) $this->session->callee_id),
+            ]),
             'caller' => [
                 'id' => $this->session->caller?->id ? (int) $this->session->caller->id : null,
                 'name' => $this->session->caller?->name,
@@ -94,6 +102,13 @@ class CallInvitation implements ShouldBroadcastNow
                 'avatar' => $this->session->callee?->avatar,
                 'user_name' => $this->session->callee?->user_name,
             ],
+            'participants' => $this->session->participantUsers()->map(fn ($user) => [
+                'id' => (int) $user->id,
+                'name' => $user->name,
+                'avatar' => $user->avatar,
+                'user_name' => $user->user_name,
+                'joined' => in_array((int) $user->id, $this->session->joinedParticipantIds(), true),
+            ])->values()->all(),
         ];
     }
 }

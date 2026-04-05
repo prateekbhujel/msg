@@ -2616,6 +2616,32 @@ function receiveMessageCard(e)
     return renderReceivedMessageCard(e);
 }//End Method
 
+function upsertConversationMessageCard(messageLike)
+{
+    const safeMarkup = receiveMessageCard(messageLike);
+
+    if (!safeMarkup) {
+        return $();
+    }
+
+    const messageId = String(messageLike?.id || '').trim();
+
+    if (!messageId.length) {
+        messageBoxContainer.append(safeMarkup);
+        return messageBoxContainer.children('.message-card').last();
+    }
+
+    const existingCard = messageBoxContainer.find(`.message-card[data-id="${messageId}"]`).first();
+
+    if (existingCard.length) {
+        existingCard.replaceWith(safeMarkup);
+    } else {
+        messageBoxContainer.append(safeMarkup);
+    }
+
+    return messageBoxContainer.find(`.message-card[data-id="${messageId}"]`).last();
+}
+
 /**
  *  -------------------------------------
  * | Resets the message from dom or Form |
@@ -3312,11 +3338,10 @@ window.Echo.private('message.' + auth_id)
             playNotficationSound();
         }
     
-        let message = receiveMessageCard(e);
         if(getConversationKey() == conversationKey)
         {
-            messageBoxContainer.append(message);
-            initializeVoicePlayers(messageBoxContainer[0]);
+            const insertedMessage = upsertConversationMessageCard(e);
+            initializeVoicePlayers(insertedMessage.length ? insertedMessage[0] : messageBoxContainer[0]);
             scrolllToBottom(messageBoxContainer);
             makeSeen(true);
             hideTypingIndicator();

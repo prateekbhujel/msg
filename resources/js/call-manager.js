@@ -431,6 +431,59 @@ class MessengerCallManager
         this.$participantAvatar.css('background-image', `url("${resolvedImage}")`);
     }
 
+    joinedParticipantCount(session = this.session)
+    {
+        const joinedParticipantIds = Array.isArray(session?.joined_participant_ids)
+            ? session.joined_participant_ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
+            : [];
+
+        if (joinedParticipantIds.length > 0) {
+            return joinedParticipantIds.length;
+        }
+
+        const participantIds = Array.isArray(session?.participant_ids)
+            ? session.participant_ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
+            : [];
+
+        return participantIds.length;
+    }
+
+    isJoinableGroupSession(session = this.session)
+    {
+        if (!session?.is_group) {
+            return false;
+        }
+
+        const joinedParticipantIds = Array.isArray(session?.joined_participant_ids)
+            ? session.joined_participant_ids.map((id) => Number(id))
+            : [];
+
+        return !joinedParticipantIds.includes(this.authId);
+    }
+
+    refreshIncomingGroupInvitation(session = this.session)
+    {
+        if (!this.isJoinableGroupSession(session)) {
+            return;
+        }
+
+        const groupParticipant = session?.group || session?.caller;
+        const joinedCount = Math.max(this.joinedParticipantCount(session), 2);
+        const acceptedAt = session?.accepted_at ? new Date(session.accepted_at).getTime() : NaN;
+        const liveSeconds = Number.isNaN(acceptedAt)
+            ? 0
+            : Math.max(0, Math.floor((Date.now() - acceptedAt) / 1000));
+
+        this.setParticipantCard(groupParticipant);
+        this.$mediaLabel.text('Group call');
+        this.$title.text(`${participantName(groupParticipant)} is live`);
+        this.$participantName.text(`${joinedCount} people in call`);
+        this.$timerLabel.text('Live now');
+        this.$duration.text(this.formatDuration(liveSeconds));
+        this.updateStatus('Join the live call', 'success');
+        this.showModal();
+    }
+
     isBusy()
     {
         return !['idle', 'external'].includes(this.role);
@@ -686,6 +739,11 @@ class MessengerCallManager
             this.stopPendingCallTimer(false);
             this.stopAttentionPulse();
             await this.closeIncomingCallNotifications(this.session.uuid);
+            if (this.isJoinableGroupSession(this.session)) {
+                this.role = 'incoming';
+                this.refreshIncomingGroupInvitation(this.session);
+                break;
+            }
             if (this.role !== 'external') {
                 this.role = 'external';
             }
@@ -708,8 +766,16 @@ class MessengerCallManager
             this.hideModal();
             break;
         case 'group_participant_joined':
+            if (this.isJoinableGroupSession(this.session)) {
+                this.role = 'incoming';
+            }
+            this.refreshIncomingGroupInvitation(this.session);
+            break;
         case 'group_participant_left':
-            // Keep the latest participant roster available to the room tab.
+            if (this.isJoinableGroupSession(this.session)) {
+                this.role = 'incoming';
+            }
+            this.refreshIncomingGroupInvitation(this.session);
             break;
         default:
             break;

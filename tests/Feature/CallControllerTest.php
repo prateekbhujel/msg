@@ -269,6 +269,57 @@ it('can invite more people into an active call', function () {
     });
 });
 
+it('allows an invited third participant to join an already active group call', function () {
+    Event::fake([CallSignal::class]);
+
+    $caller = User::factory()->create();
+    $callee = User::factory()->create();
+    $guest = User::factory()->create();
+
+    $group = ChatGroup::create([
+        'owner_id' => $caller->id,
+        'name' => 'Call Crew',
+        'avatar' => 'default/avatar.png',
+    ]);
+
+    $group->members()->attach([
+        $caller->id => ['created_at' => now(), 'updated_at' => now()],
+        $callee->id => ['created_at' => now(), 'updated_at' => now()],
+        $guest->id => ['created_at' => now(), 'updated_at' => now()],
+    ]);
+
+    $session = makeCallSession($caller, $callee, [
+        'status' => 'active',
+        'accepted_at' => now(),
+        'meta' => [
+            'is_group' => true,
+            'group_id' => $group->id,
+            'group_name' => $group->name,
+            'group_avatar' => $group->avatarPath(),
+            'group_member_count' => 3,
+            'conversation_key' => $group->conversationKey(),
+            'participant_ids' => [$caller->id, $callee->id, $guest->id],
+            'joined_participant_ids' => [$caller->id, $callee->id],
+        ],
+    ]);
+
+    $response = $this->actingAs($guest)->postJson(route('messenger.calls.accept', [
+        'session' => $session->uuid,
+    ]));
+
+    $response->assertOk()
+        ->assertJsonPath('session.status', 'active');
+
+    expect($session->fresh()->joinedParticipantIds())->toContain($guest->id);
+
+    Event::assertDispatched(CallSignal::class, function (CallSignal $event) use ($session, $guest) {
+        return $event->type === 'group_participant_joined'
+            && $event->session->uuid === $session->uuid
+            && $event->fromId === $guest->id
+            && (int) ($event->payload['joined_user_id'] ?? 0) === $guest->id;
+    });
+});
+
 it('upgrades an active audio call to video', function () {
     Event::fake([CallUpgradeVideo::class]);
 

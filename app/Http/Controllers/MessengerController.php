@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\ConversationThemeUpdated;
 use App\Events\Message as MessageEvent;
 use App\Events\MessageReactionUpdated;
 use App\Events\TypingIndicatorUpdated;
@@ -30,6 +31,9 @@ use Rubix\ML\Transformers\WordCountVectorizer;
 class MessengerController extends Controller
 {
     use FileUploadTrait;
+
+    protected const DEFAULT_THEME_PRIMARY = '#2180f3';
+    protected const DEFAULT_THEME_LIGHT = '#ecf5ff';
 
     public function index()
     {
@@ -77,6 +81,7 @@ class MessengerController extends Controller
         $conversation = $this->resolveConversationFromRequest($request);
         $content = '';
         $disappearAfter = $this->conversationDisappearAfter($conversation);
+        $theme = $this->conversationTheme($conversation);
 
         if ($conversation['type'] === 'group') {
             /** @var \App\Models\ChatGroup $group */
@@ -114,6 +119,7 @@ class MessengerController extends Controller
                     'member_count' => $group->memberCount(),
                 ],
                 'disappear_after' => $disappearAfter,
+                'theme' => $theme,
                 'members' => $group->members->map(fn (User $member) => [
                     'id' => (int) $member->id,
                     'name' => $member->name,
@@ -165,6 +171,7 @@ class MessengerController extends Controller
             'fetch' => $user,
             'favorite' => $favorite,
             'disappear_after' => $disappearAfter,
+            'theme' => $theme,
             'shared_photos' => $content,
             'members' => [],
         ]);
@@ -624,6 +631,45 @@ class MessengerController extends Controller
         ]);
     }
 
+    public function updateConversationTheme(Request $request)
+    {
+        $request->validate([
+            'conversation_key' => ['required', 'string'],
+            'primary_color' => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+            'light_color' => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+        ]);
+
+        $conversation = $this->resolveConversationFromRequest($request);
+        $authId = (int) Auth::id();
+        $primaryColor = strtoupper((string) $request->input('primary_color'));
+        $lightColor = strtoupper((string) $request->input('light_color'));
+        $setting = $this->persistConversationThemeSetting($conversation, $primaryColor, $lightColor);
+        $recipientIds = $conversation['type'] === 'group'
+            ? $conversation['group']->members()->pluck('users.id')->map(fn ($id) => (int) $id)->reject(fn ($id) => $id === $authId)->values()->all()
+            : collect([(int) $conversation['user']->id])->reject(fn ($id) => $id === $authId)->values()->all();
+        $broadcastConversationKey = $conversation['type'] === 'group'
+            ? $conversation['conversation_key']
+            : 'user:' . $authId;
+
+        if (! empty($recipientIds)) {
+            $this->dispatchBroadcastSafely(static fn () => ConversationThemeUpdated::dispatch(
+                $recipientIds,
+                $broadcastConversationKey,
+                $primaryColor,
+                $lightColor,
+                $authId
+            ));
+        }
+
+        return response()->json([
+            'ok' => true,
+            'theme' => [
+                'primary' => $setting->theme_primary ?: self::DEFAULT_THEME_PRIMARY,
+                'light' => $setting->theme_light ?: self::DEFAULT_THEME_LIGHT,
+            ],
+        ]);
+    }
+
     protected function collectAttachments(Request $request): array
     {
         $attachments = [];
@@ -873,18 +919,17 @@ class MessengerController extends Controller
 
     protected function conversationDisappearAfter(array $conversation): string
     {
-        if ($conversation['type'] === 'group') {
-            return ConversationSetting::query()
-                ->where('group_id', (int) $conversation['group']->id)
-                ->value('disappear_after') ?: 'off';
-        }
+        return $this->conversationSetting($conversation)?->disappear_after ?: 'off';
+    }
 
-        [$userAId, $userBId] = $this->directConversationPairIds((int) Auth::id(), (int) $conversation['user']->id);
+    protected function conversationTheme(array $conversation): array
+    {
+        $setting = $this->conversationSetting($conversation);
 
-        return ConversationSetting::query()
-            ->where('direct_user_a_id', $userAId)
-            ->where('direct_user_b_id', $userBId)
-            ->value('disappear_after') ?: 'off';
+        return [
+            'primary' => $setting?->theme_primary ?: self::DEFAULT_THEME_PRIMARY,
+            'light' => $setting?->theme_light ?: self::DEFAULT_THEME_LIGHT,
+        ];
     }
 
     protected function persistConversationDisappearSetting(array $conversation, string $value): ConversationSetting
@@ -914,6 +959,35 @@ class MessengerController extends Controller
         );
     }
 
+    protected function persistConversationThemeSetting(array $conversation, string $primaryColor, string $lightColor): ConversationSetting
+    {
+        if ($conversation['type'] === 'group') {
+            return ConversationSetting::query()->updateOrCreate(
+                ['group_id' => (int) $conversation['group']->id],
+                [
+                    'direct_user_a_id' => null,
+                    'direct_user_b_id' => null,
+                    'theme_primary' => $primaryColor,
+                    'theme_light' => $lightColor,
+                ]
+            );
+        }
+
+        [$userAId, $userBId] = $this->directConversationPairIds((int) Auth::id(), (int) $conversation['user']->id);
+
+        return ConversationSetting::query()->updateOrCreate(
+            [
+                'direct_user_a_id' => $userAId,
+                'direct_user_b_id' => $userBId,
+            ],
+            [
+                'group_id' => null,
+                'theme_primary' => $primaryColor,
+                'theme_light' => $lightColor,
+            ]
+        );
+    }
+
     protected function conversationExpiryForNewMessage(array $conversation): ?\Illuminate\Support\Carbon
     {
         return match ($this->conversationDisappearAfter($conversation)) {
@@ -928,6 +1002,22 @@ class MessengerController extends Controller
         $ids = collect([$firstUserId, $secondUserId])->map(fn ($id) => (int) $id)->sort()->values();
 
         return [(int) $ids[0], (int) $ids[1]];
+    }
+
+    protected function conversationSetting(array $conversation): ?ConversationSetting
+    {
+        if ($conversation['type'] === 'group') {
+            return ConversationSetting::query()
+                ->where('group_id', (int) $conversation['group']->id)
+                ->first();
+        }
+
+        [$userAId, $userBId] = $this->directConversationPairIds((int) Auth::id(), (int) $conversation['user']->id);
+
+        return ConversationSetting::query()
+            ->where('direct_user_a_id', $userAId)
+            ->where('direct_user_b_id', $userBId)
+            ->first();
     }
 
     protected function purgeExpiredMessages(): void

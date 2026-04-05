@@ -15,6 +15,8 @@ class ConversationSetting extends Model
         'direct_user_b_id',
         'group_id',
         'disappear_after',
+        'theme_primary',
+        'theme_light',
     ];
 
     public function group(): BelongsTo

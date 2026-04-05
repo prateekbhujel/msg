@@ -63,6 +63,7 @@ Route::group(['middleware' => 'auth'], function() {
     Route::post('messenger/message-tone', [MessengerController::class, 'analyzeTone'])->name('messenger.message-tone');
     Route::post('messenger/conversation-search', [MessengerController::class, 'searchConversation'])->name('messenger.conversation-search');
     Route::post('messenger/conversation-disappearing', [MessengerController::class, 'updateDisappearingMessages'])->name('messenger.conversation-disappearing');
+    Route::post('messenger/conversation-theme', [MessengerController::class, 'updateConversationTheme'])->name('messenger.conversation-theme');
 
     //Fetchs Messages of Selected User
     Route::get('messenger/fetch-messages', [MessengerController::class, 'fetchMessages'])->name('messenger.fetch-messages');

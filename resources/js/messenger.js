@@ -223,18 +223,41 @@ function writeThemeMap(themeMap = {})
     }
 }
 
+function normalizeThemePayload(theme = {})
+{
+    const primary = String(theme?.primary || DEFAULT_CHAT_THEME.primary).trim() || DEFAULT_CHAT_THEME.primary;
+    const light = String(theme?.light || DEFAULT_CHAT_THEME.light).trim() || DEFAULT_CHAT_THEME.light;
+
+    return {
+        primary,
+        light,
+    };
+}
+
+function cacheChatTheme(conversationKey = '', theme = {})
+{
+    const safeConversationKey = String(conversationKey || '').trim();
+
+    if (!safeConversationKey) {
+        return normalizeThemePayload(theme);
+    }
+
+    const normalizedTheme = normalizeThemePayload(theme);
+    const themeMap = readThemeMap();
+
+    themeMap[safeConversationKey] = normalizedTheme;
+    writeThemeMap(themeMap);
+
+    return normalizedTheme;
+}
+
 function themeForConversation(conversationKey = '')
 {
     const safeConversationKey = String(conversationKey || '').trim();
     const themeMap = readThemeMap();
     const storedTheme = safeConversationKey ? themeMap[safeConversationKey] : null;
-    const primaryColor = String(storedTheme?.primary || DEFAULT_CHAT_THEME.primary);
-    const lightColor = String(storedTheme?.light || DEFAULT_CHAT_THEME.light);
 
-    return {
-        primary: primaryColor,
-        light: lightColor,
-    };
+    return normalizeThemePayload(storedTheme || {});
 }
 
 function applyChatTheme(primaryColor = DEFAULT_CHAT_THEME.primary, lightColor = DEFAULT_CHAT_THEME.light)
@@ -263,18 +286,23 @@ function loadStoredChatTheme()
 
 function saveChatTheme(primaryColor, lightColor, conversationKey = getConversationKey())
 {
-    const safeConversationKey = String(conversationKey || '').trim();
+    const normalizedTheme = cacheChatTheme(conversationKey, {
+        primary: primaryColor,
+        light: lightColor,
+    });
 
-    if (safeConversationKey) {
-        const themeMap = readThemeMap();
-        themeMap[safeConversationKey] = {
-            primary: primaryColor,
-            light: lightColor,
-        };
-        writeThemeMap(themeMap);
+    applyChatTheme(normalizedTheme.primary, normalizedTheme.light);
+}
+
+function applyConversationThemePayload(conversationKey = '', theme = {}, { apply = false } = {})
+{
+    const normalizedTheme = cacheChatTheme(conversationKey, theme);
+
+    if (apply || String(conversationKey || '').trim() === getConversationKey()) {
+        applyChatTheme(normalizedTheme.primary, normalizedTheme.light);
     }
 
-    applyChatTheme(primaryColor, lightColor);
+    return normalizedTheme;
 }
 
 function setDarkMode(enabled = false)
@@ -880,7 +908,16 @@ function showTypingIndicator(name = 'Someone')
     }
 
     window.clearTimeout(typingIndicatorHideTimer);
-    typingIndicatorLabel.text(`${name} is typing...`).removeClass('d-none');
+    typingIndicatorLabel.html(`
+        <span class="typing-indicator-bubble">
+            <span class="typing-indicator-label">${escapeHtml(name)}</span>
+            <span class="typing-indicator-dots" aria-hidden="true">
+                <span></span>
+                <span></span>
+                <span></span>
+            </span>
+        </span>
+    `).removeClass('d-none').attr('data-visible', 'true');
     typingIndicatorHideTimer = window.setTimeout(() => {
         hideTypingIndicator();
     }, 2600);
@@ -892,7 +929,7 @@ function hideTypingIndicator()
         return;
     }
 
-    typingIndicatorLabel.addClass('d-none').text('');
+    typingIndicatorLabel.addClass('d-none').removeAttr('data-visible').empty();
 }
 
 function applySeenState(conversationKey, lastSeenMessageId)
@@ -2940,6 +2977,9 @@ function Idinfo(id)
 
             initVenobox();
             initializeVoicePlayers(messageBoxContainer[0]);
+            applyConversationThemePayload(data.conversation_key || getConversationKey(), data.theme || {}, {
+                apply: true,
+            });
 
             //Fetch Favourites and handles the favorite button
             data.favorite > 0 ? $(".favourite").addClass("active") : $(".favourite").removeClass("active");
@@ -3202,6 +3242,17 @@ window.Echo.private('message.' + auth_id)
         const reactions = normalizeReactionSummary([], event.reaction_map || {});
 
         applyReactionState(event.message_id, reactions);
+    })
+    .listen('.conversation.theme-updated', (event) => {
+        const conversationKey = String(event?.conversation_key || '').trim();
+
+        if (!conversationKey) {
+            return;
+        }
+
+        applyConversationThemePayload(conversationKey, event?.theme || {}, {
+            apply: conversationKey === getConversationKey(),
+        });
     })
     .listen('.typing.indicator', (event) => {
         if (event.conversation_key !== getConversationKey() || Number(event.from_id) === Number(auth_id)) {
@@ -3872,11 +3923,36 @@ $(document).ready(function ()
 
     themeSwatches.on('click', function (e) {
         e.preventDefault();
-        saveChatTheme(
-            String($(this).data('chatThemeColor') || '#2180f3'),
-            String($(this).data('chatThemeLight') || '#ecf5ff'),
-            getConversationKey()
-        );
+        const conversationKey = getConversationKey();
+        const primaryColor = String($(this).data('chatThemeColor') || '#2180f3');
+        const lightColor = String($(this).data('chatThemeLight') || '#ecf5ff');
+
+        if (!conversationKey) {
+            notyf.error('Select a conversation first.');
+            return;
+        }
+
+        saveChatTheme(primaryColor, lightColor, conversationKey);
+
+        $.ajax({
+            method: 'POST',
+            url: route('messenger.conversation-theme'),
+            data: {
+                _token: csrf_token,
+                conversation_key: conversationKey,
+                primary_color: primaryColor,
+                light_color: lightColor,
+            },
+            success: function (data) {
+                applyConversationThemePayload(conversationKey, data.theme || {
+                    primary: primaryColor,
+                    light: lightColor,
+                }, { apply: conversationKey === getConversationKey() });
+            },
+            error: function () {
+                notyf.error('Unable to sync the theme right now.');
+            }
+        });
     });
 
     /** 

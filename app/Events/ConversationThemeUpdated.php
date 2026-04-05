@@ -8,7 +8,7 @@ use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class TypingIndicatorUpdated implements ShouldBroadcastNow
+class ConversationThemeUpdated implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
@@ -18,15 +18,12 @@ class TypingIndicatorUpdated implements ShouldBroadcastNow
     public function __construct(
         public array $recipientIds,
         public string $conversationKey,
-        public int $fromId,
-        public string $fromName,
-        public bool $typing = true,
+        public string $primaryColor,
+        public string $lightColor,
+        public int $updatedById,
     ) {
     }
 
-    /**
-     * @return array<int, \Illuminate\Broadcasting\Channel>
-     */
     public function broadcastOn(): array
     {
         return collect($this->recipientIds)
@@ -37,21 +34,20 @@ class TypingIndicatorUpdated implements ShouldBroadcastNow
             ->all();
     }
 
-    /**
-     * @return array<string, mixed>
-     */
+    public function broadcastAs(): string
+    {
+        return 'conversation.theme-updated';
+    }
+
     public function broadcastWith(): array
     {
         return [
             'conversation_key' => $this->conversationKey,
-            'from_id' => $this->fromId,
-            'from_name' => $this->fromName,
-            'typing' => $this->typing,
+            'theme' => [
+                'primary' => $this->primaryColor,
+                'light' => $this->lightColor,
+            ],
+            'updated_by_id' => $this->updatedById,
         ];
-    }
-
-    public function broadcastAs(): string
-    {
-        return 'typing.indicator';
     }
 }

@@ -1,5 +1,6 @@
 <?php
 
+use App\Events\ConversationThemeUpdated;
 use App\Events\MessageSeenUpdated;
 use App\Events\TypingIndicatorUpdated;
 use App\Models\ConversationSetting;
@@ -82,6 +83,39 @@ it('stores disappearing message settings and applies expiry metadata to new mess
     $message = Message::query()->latest('id')->firstOrFail();
 
     expect(data_get($message->meta, 'expires_at'))->not->toBeNull();
+});
+
+it('stores conversation theme changes and broadcasts them to the other participant', function () {
+    Event::fake([ConversationThemeUpdated::class]);
+
+    $sender = User::factory()->create();
+    $recipient = User::factory()->create();
+
+    $response = $this->actingAs($sender)->postJson(route('messenger.conversation-theme'), [
+        'conversation_key' => 'user:' . $recipient->id,
+        'primary_color' => '#16A34A',
+        'light_color' => '#F0FDF4',
+    ]);
+
+    $response->assertOk()
+        ->assertJsonPath('theme.primary', '#16A34A')
+        ->assertJsonPath('theme.light', '#F0FDF4');
+
+    $setting = ConversationSetting::query()
+        ->where('direct_user_a_id', min($sender->id, $recipient->id))
+        ->where('direct_user_b_id', max($sender->id, $recipient->id))
+        ->firstOrFail();
+
+    expect($setting->theme_primary)->toBe('#16A34A');
+    expect($setting->theme_light)->toBe('#F0FDF4');
+
+    Event::assertDispatched(ConversationThemeUpdated::class, function (ConversationThemeUpdated $event) use ($sender, $recipient) {
+        return $event->recipientIds === [$recipient->id]
+            && $event->conversationKey === 'user:' . $sender->id
+            && $event->primaryColor === '#16A34A'
+            && $event->lightColor === '#F0FDF4'
+            && $event->updatedById === $sender->id;
+    });
 });
 
 it('normalizes emoji shortcuts and stores a lightweight language hint on send', function () {

@@ -363,8 +363,8 @@ body.call-room-page .call-room {
 .call-room__pill {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 12px;
+    gap: 8px;
+    padding: 10px;
     border-radius: 999px;
     background: rgba(15, 23, 42, 0.34);
     border: 1px solid rgba(255, 255, 255, 0.12);
@@ -374,17 +374,17 @@ body.call-room-page .call-room {
 }
 
 .call-room__control {
-    min-width: 74px;
+    min-width: 62px;
     border: none;
     border-radius: 999px;
-    padding: 10px 12px;
+    padding: 10px 10px;
     background: rgba(255, 255, 255, 0.06);
     color: #f8fafc;
     display: inline-flex;
     flex-direction: column;
     align-items: center;
-    gap: 5px;
-    font-size: 0.82rem;
+    gap: 4px;
+    font-size: 0.76rem;
     font-weight: 600;
     transition: background .2s ease, transform .2s ease;
 }
@@ -408,6 +408,11 @@ body.call-room-page .call-room {
 
 .call-room__control--end {
     background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+}
+
+.call-room__control i,
+.call-room__more-action i {
+    font-size: 1rem;
 }
 
 .call-room__overlay {
@@ -459,7 +464,8 @@ body.call-room-page .call-room {
 }
 
 .call-room__reaction-tray,
-.call-room__invite-sheet {
+.call-room__invite-sheet,
+.call-room__more-tray {
     position: absolute;
     left: 50%;
     transform: translateX(-50%);
@@ -478,7 +484,8 @@ body.call-room-page .call-room {
 }
 
 .call-room__reaction-tray.is-hidden,
-.call-room__invite-sheet.is-hidden {
+.call-room__invite-sheet.is-hidden,
+.call-room__more-tray.is-hidden {
     display: none;
 }
 
@@ -500,6 +507,41 @@ body.call-room-page .call-room {
     border: 1px solid rgba(255, 255, 255, 0.10);
     backdrop-filter: blur(18px);
     box-shadow: 0 24px 60px rgba(2, 6, 23, 0.36);
+}
+
+.call-room__more-tray {
+    width: min(360px, calc(100vw - 28px));
+    bottom: 104px;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    padding: 14px;
+    border-radius: 24px;
+    background: rgba(15, 23, 42, 0.88);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: 0 24px 60px rgba(2, 6, 23, 0.36);
+}
+
+.call-room__more-action {
+    border: none;
+    border-radius: 18px;
+    padding: 12px 10px;
+    background: rgba(255, 255, 255, 0.06);
+    color: #f8fafc;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    min-height: 78px;
+}
+
+.call-room__more-action.is-hidden {
+    display: none;
 }
 
 .call-room__invite-sheet-header {
@@ -666,7 +708,7 @@ body.call-room-page .call-room {
     }
 
     .call-room__control {
-        min-width: 70px;
+        min-width: 58px;
         flex-shrink: 0;
     }
 
@@ -674,6 +716,11 @@ body.call-room-page .call-room {
         width: calc(100vw - 28px);
         justify-content: center;
         flex-wrap: wrap;
+    }
+
+    .call-room__more-tray {
+        width: calc(100vw - 28px);
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .call-room__pip {

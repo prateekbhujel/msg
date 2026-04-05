@@ -115,6 +115,25 @@
             <button type="button" data-call-reaction="🔥">🔥</button>
         </section>
 
+        <section class="call-room__more-tray is-hidden" data-more-tray>
+            <button type="button" class="call-room__more-action" data-control="screen" aria-label="Share screen">
+                <i class="fas fa-desktop"></i>
+                <span>Share</span>
+            </button>
+            <button type="button" class="call-room__more-action" data-control="switch-camera" aria-label="Switch camera">
+                <i class="fas fa-sync"></i>
+                <span>Switch</span>
+            </button>
+            <button type="button" class="call-room__more-action" data-control="reactions" aria-label="Open reactions">
+                <i class="far fa-smile-beam"></i>
+                <span>React</span>
+            </button>
+            <button type="button" class="call-room__more-action" data-control="invite" aria-label="Invite more people">
+                <i class="fas fa-user-plus"></i>
+                <span>Invite</span>
+            </button>
+        </section>
+
         <section class="call-room__controls" data-call-controls>
             <div class="call-room__pill">
                 <button type="button" class="call-room__control" data-control="mic" aria-label="Toggle microphone">
@@ -125,25 +144,13 @@
                     <i class="fas fa-video"></i>
                     <span>Camera</span>
                 </button>
-                <button type="button" class="call-room__control" data-control="screen" aria-label="Share screen">
-                    <i class="fas fa-desktop"></i>
-                    <span>Share</span>
-                </button>
-                <button type="button" class="call-room__control" data-control="switch-camera" aria-label="Switch camera">
-                    <i class="fas fa-sync"></i>
-                    <span>Switch</span>
-                </button>
-                <button type="button" class="call-room__control" data-control="reactions" aria-label="Send reaction">
-                    <i class="far fa-smile-beam"></i>
-                    <span>React</span>
-                </button>
-                <button type="button" class="call-room__control" data-control="invite" aria-label="Invite more people">
-                    <i class="fas fa-user-plus"></i>
-                    <span>Invite</span>
-                </button>
                 <button type="button" class="call-room__control" data-control="upgrade" aria-label="Upgrade to video">
                     <i class="fas fa-arrow-up"></i>
                     <span>Video</span>
+                </button>
+                <button type="button" class="call-room__control" data-control="more" aria-label="More call actions">
+                    <i class="fas fa-ellipsis-h"></i>
+                    <span>More</span>
                 </button>
                 <button type="button" class="call-room__control call-room__control--end" data-control="end" aria-label="End call">
                     <i class="fas fa-phone-slash"></i>

@@ -169,6 +169,7 @@ class CallRoomApp
         this.reactionBurstLayer = this.root?.querySelector('[data-reaction-bursts]') || null;
         this.reactionTray = this.root?.querySelector('[data-reaction-tray]') || null;
         this.inviteSheet = this.root?.querySelector('[data-invite-sheet]') || null;
+        this.moreTray = this.root?.querySelector('[data-more-tray]') || null;
         this.inviteList = this.root?.querySelector('[data-invite-list]') || null;
 
         this.peers = new Map();
@@ -322,9 +323,23 @@ class CallRoomApp
 
     activePeerIds()
     {
-        return Array.from(new Set(
+        const joinedPeerIds = Array.from(new Set(
             this.joinedParticipantIds().filter((id) => id !== this.authId)
         ));
+
+        if (joinedPeerIds.length > 0) {
+            return joinedPeerIds;
+        }
+
+        if (String(this.session?.status || '') === 'active') {
+            return Array.from(new Set(
+                (Array.isArray(this.session?.participant_ids) ? this.session.participant_ids : [])
+                    .map((id) => sanitizeId(id))
+                    .filter((id) => id > 0 && id !== this.authId)
+            ));
+        }
+
+        return [];
     }
 
     bindControls()
@@ -338,23 +353,33 @@ class CallRoomApp
         });
 
         this.root.querySelector('[data-control="screen"]')?.addEventListener('click', () => {
+            this.toggleMoreTray(false);
             this.toggleScreenShare().catch(() => {});
         });
 
         this.root.querySelector('[data-control="switch-camera"]')?.addEventListener('click', () => {
+            this.toggleMoreTray(false);
             this.switchCamera().catch(() => {});
         });
 
         this.root.querySelector('[data-control="reactions"]')?.addEventListener('click', () => {
+            this.toggleMoreTray(false);
             this.toggleReactionTray();
         });
 
         this.root.querySelector('[data-control="invite"]')?.addEventListener('click', () => {
+            this.toggleMoreTray(false);
             this.toggleInviteSheet();
         });
 
         this.root.querySelector('[data-control="upgrade"]')?.addEventListener('click', () => {
             this.requestUpgradeToVideo().catch(() => {});
+        });
+
+        this.root.querySelector('[data-control="more"]')?.addEventListener('click', () => {
+            this.toggleReactionTray(false);
+            this.toggleInviteSheet(false);
+            this.toggleMoreTray();
         });
 
         this.root.querySelector('[data-control="end"]')?.addEventListener('click', () => {
@@ -383,6 +408,9 @@ class CallRoomApp
         });
 
         this.stage?.addEventListener('pointerdown', () => {
+            this.toggleReactionTray(false);
+            this.toggleInviteSheet(false);
+            this.toggleMoreTray(false);
             this.showControlsTemporarily();
         });
 
@@ -390,6 +418,7 @@ class CallRoomApp
             if (event.key === 'Escape') {
                 this.toggleReactionTray(false);
                 this.toggleInviteSheet(false);
+                this.toggleMoreTray(false);
             }
         });
 
@@ -483,15 +512,35 @@ class CallRoomApp
             this.eyebrowLabel.textContent = participants.length > 2 ? 'Group call' : `${this.isVideoCall() ? 'Video' : 'Audio'} call`;
         }
 
-        const joinedCount = joinedIds.size;
+        const connectedParticipantIds = joinedIds.size > 0
+            ? Array.from(joinedIds)
+            : (Array.isArray(this.session?.participant_ids) ? this.session.participant_ids : []).filter((id) => sanitizeId(id) > 0);
+        const joinedCount = connectedParticipantIds.length;
+        const hasRemotePeers = this.activePeerIds().length > 0;
 
         if (this.statusLabel) {
             if (this.session.status === 'ringing') {
                 this.statusLabel.textContent = 'Ringing…';
+            } else if (hasRemotePeers && (!this.grid || this.grid.children.length === 0)) {
+                this.statusLabel.textContent = 'Connecting media…';
             } else if (joinedCount > 1) {
                 this.statusLabel.textContent = `${joinedCount} people are connected`;
             } else {
                 this.statusLabel.textContent = 'Connecting…';
+            }
+        }
+
+        if (this.emptyLabel) {
+            if (this.session.status === 'ringing') {
+                this.emptyLabel.textContent = this.session?.caller?.id === this.authId
+                    ? 'Waiting for them to answer…'
+                    : 'Opening your call room…';
+            } else if (hasRemotePeers) {
+                this.emptyLabel.textContent = 'Connecting media…';
+            } else if (this.session?.group?.name) {
+                this.emptyLabel.textContent = 'Waiting for others to join…';
+            } else {
+                this.emptyLabel.textContent = 'Waiting for the other person to join…';
             }
         }
     }
@@ -1443,6 +1492,10 @@ class CallRoomApp
             : !!forceState;
 
         this.reactionTray.classList.toggle('is-hidden', !shouldShow);
+        if (shouldShow) {
+            this.toggleInviteSheet(false);
+            this.toggleMoreTray(false);
+        }
     }
 
     toggleInviteSheet(forceState = null)
@@ -1456,6 +1509,24 @@ class CallRoomApp
             : !!forceState;
 
         this.inviteSheet.classList.toggle('is-hidden', !shouldShow);
+        this.positionSheetsForViewport();
+        if (shouldShow) {
+            this.toggleReactionTray(false);
+            this.toggleMoreTray(false);
+        }
+    }
+
+    toggleMoreTray(forceState = null)
+    {
+        if (!this.moreTray) {
+            return;
+        }
+
+        const shouldShow = forceState === null
+            ? this.moreTray.classList.contains('is-hidden')
+            : !!forceState;
+
+        this.moreTray.classList.toggle('is-hidden', !shouldShow);
         this.positionSheetsForViewport();
     }
 
@@ -1471,6 +1542,10 @@ class CallRoomApp
 
         if (this.reactionTray) {
             this.reactionTray.style.bottom = `${Math.max(bottomOffset + 96, 96)}px`;
+        }
+
+        if (this.moreTray) {
+            this.moreTray.style.bottom = `${Math.max(bottomOffset + 96, 96)}px`;
         }
     }
 

@@ -1190,7 +1190,8 @@ body.dark-mode .wsus__user_list_search input {
 
 .message-reaction-picker {
     position: absolute;
-    right: 0;
+    left: 0;
+    right: auto;
     top: calc(100% + 8px);
     display: flex;
     align-items: center;

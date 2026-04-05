@@ -223,6 +223,7 @@ class MessengerCallManager
         this.armNotificationPermissionRequest();
         this.subscribeToInvitationChannel();
         this.bindCallSyncChannel();
+        this.dismissExpiredIncomingNotifications().catch(() => {});
         this.resetModalUI();
         this.initialized = true;
     }
@@ -830,6 +831,8 @@ class MessengerCallManager
                 url: this.buildNotificationTargetUrl(session),
                 room_url: session?.room_url,
                 session_uuid: session?.uuid,
+                issued_at: Date.now(),
+                timeout_seconds: Number(session?.timeout_seconds || 30),
             },
         };
 
@@ -877,6 +880,34 @@ class MessengerCallManager
             (notifications || []).forEach((notification) => notification.close());
         } catch (error) {
             // Ignore notification cleanup failures.
+        }
+    }
+
+    async dismissExpiredIncomingNotifications()
+    {
+        try {
+            const registration = await (window.__messengerServiceWorkerRegistrationPromise || Promise.resolve(null));
+            const notifications = await registration?.getNotifications?.();
+
+            (notifications || []).forEach((notification) => {
+                const tag = String(notification?.tag || '');
+
+                if (!tag.startsWith('incoming-call-')) {
+                    return;
+                }
+
+                const issuedAt = Number(notification?.data?.issued_at || 0);
+                const timeoutSeconds = Math.max(1, Number(notification?.data?.timeout_seconds || 30));
+                const notificationExpired = issuedAt > 0
+                    ? (Date.now() - issuedAt) >= ((timeoutSeconds + 3) * 1000)
+                    : true;
+
+                if (notificationExpired) {
+                    notification.close();
+                }
+            });
+        } catch (error) {
+            // Ignore stale notification cleanup failures.
         }
     }
 

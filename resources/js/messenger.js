@@ -2262,6 +2262,7 @@ async function sendMessage()
             formData.append("id", directUserId);
         }
 
+        formData.set("message", inputValue);
         formData.append("temporaryMsgId", tempID);
         formData.append("_token", csrf_token);
         if (composerReplyTarget?.id) {

@@ -45,6 +45,7 @@ Route::group(['middleware' => 'auth'], function() {
     Route::post('messenger/calls', [CallController::class, 'store'])->name('messenger.calls.store');
     Route::post('messenger/calls/{session:uuid}/accept', [CallController::class, 'accept'])->name('messenger.calls.accept');
     Route::post('messenger/calls/{session:uuid}/decline', [CallController::class, 'decline'])->name('messenger.calls.decline');
+    Route::post('messenger/calls/{session:uuid}/leave', [CallController::class, 'hangup'])->name('messenger.calls.leave');
     Route::post('messenger/calls/{session:uuid}/signal', [CallController::class, 'signal'])->name('messenger.calls.signal');
     Route::delete('messenger/calls/{session:uuid}', [CallController::class, 'hangup'])->name('messenger.calls.hangup');
     Route::get('call/{session:uuid}', [CallRoomController::class, 'show'])->name('calls.room');

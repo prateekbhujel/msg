@@ -477,8 +477,18 @@
     }
 
     .message-reaction-picker {
-        bottom: auto;
-        top: calc(100% + 8px);
+        top: auto;
+        bottom: calc(100% + 8px);
+        left: 0;
+        right: auto;
+        max-width: calc(100vw - 44px);
+        flex-wrap: wrap;
+        border-radius: 18px;
+    }
+
+    .wsus__single_chat.chat_right .message-reaction-picker {
+        left: auto;
+        right: 0;
     }
 
     .chat-theme-swatches {

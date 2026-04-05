@@ -195,6 +195,7 @@ class CallRoomApp
         this.dragState = null;
         this.callEnding = false;
         this.roomFinished = false;
+        this.leaveSignalSent = false;
         this.initialized = false;
     }
 
@@ -405,13 +406,17 @@ class CallRoomApp
             this.updateControlStates();
         });
 
-        window.addEventListener('beforeunload', () => {
+        const handleLifecycleExit = () => {
+            this.notifyServerOnLeave();
             this.releaseWakeLock().catch(() => {});
             this.broadcastChannel?.postMessage({
                 type: 'call_room_closed',
                 session_uuid: this.session?.uuid,
             });
-        });
+        };
+
+        window.addEventListener('beforeunload', handleLifecycleExit);
+        window.addEventListener('pagehide', handleLifecycleExit);
     }
 
     bindBroadcastChannel()
@@ -1513,6 +1518,7 @@ class CallRoomApp
         }
 
         this.roomFinished = true;
+        this.leaveSignalSent = true;
         this.stopRingCountdown();
         this.stopCallTimer();
         this.stopQualityMonitor();
@@ -1556,6 +1562,39 @@ class CallRoomApp
                 // Track teardown is best-effort during call shutdown.
             }
         });
+    }
+
+    notifyServerOnLeave()
+    {
+        if (this.leaveSignalSent || this.roomFinished || !this.session?.uuid || !this.csrfToken) {
+            return;
+        }
+
+        this.leaveSignalSent = true;
+
+        const leaveUrl = route('messenger.calls.leave', { session: this.session.uuid });
+        const payload = new FormData();
+        payload.append('_token', this.csrfToken);
+
+        try {
+            if (navigator.sendBeacon) {
+                navigator.sendBeacon(leaveUrl, payload);
+                return;
+            }
+        } catch (error) {
+            // Fall back to keepalive fetch below.
+        }
+
+        try {
+            window.fetch(leaveUrl, {
+                method: 'POST',
+                body: payload,
+                keepalive: true,
+                credentials: 'same-origin',
+            }).catch(() => {});
+        } catch (error) {
+            // Ignore lifecycle cleanup failures.
+        }
     }
 
     navigateBackToChat(shouldCloseTab = true)

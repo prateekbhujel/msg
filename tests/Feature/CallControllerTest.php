@@ -131,6 +131,21 @@ it('hangs up an active call and marks it ended', function () {
     });
 });
 
+it('allows the call room leave endpoint to end an active call', function () {
+    Event::fake([CallSignal::class]);
+
+    $caller = User::factory()->create();
+    $callee = User::factory()->create();
+    $session = makeCallSession($caller, $callee, ['status' => 'active', 'accepted_at' => now()]);
+
+    $this->actingAs($caller)
+        ->postJson(route('messenger.calls.leave', ['session' => $session->uuid]))
+        ->assertOk()
+        ->assertJsonPath('history_message.meta.status', 'ended');
+
+    expect($session->fresh()->status)->toBe('ended');
+});
+
 it('marks unanswered ringing calls as missed without adding fake duration', function () {
     Event::fake([CallSignal::class]);
 

@@ -203,7 +203,7 @@ body.call-room-page .call-room {
 .call-room__tile-video {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: contain;
     background: #020617;
 }
 
@@ -216,7 +216,8 @@ body.call-room-page .call-room {
 }
 
 .call-room__tile-name,
-.call-room__tile-indicator {
+.call-room__tile-indicator,
+.call-room__tile-fullscreen {
     position: absolute;
     z-index: 2;
 }
@@ -243,6 +244,20 @@ body.call-room-page .call-room {
     align-items: center;
     justify-content: center;
     color: rgba(248, 250, 252, 0.72);
+}
+
+.call-room__tile-fullscreen {
+    top: 14px;
+    left: 14px;
+    width: 34px;
+    height: 34px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(15, 23, 42, 0.52);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(248, 250, 252, 0.88);
 }
 
 .call-room__empty-state {

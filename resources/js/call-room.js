@@ -342,6 +342,22 @@ class CallRoomApp
         return [];
     }
 
+    connectedPeerCount()
+    {
+        return Array.from(this.peers.values()).filter((peer) => {
+            const connectionState = String(peer.connection?.connectionState || '');
+            const iceConnectionState = String(peer.connection?.iceConnectionState || '');
+
+            return ['connected'].includes(connectionState)
+                || ['connected', 'completed'].includes(iceConnectionState);
+        }).length;
+    }
+
+    hasEstablishedMedia()
+    {
+        return this.connectedPeerCount() > 0;
+    }
+
     bindControls()
     {
         this.root.querySelector('[data-control="mic"]')?.addEventListener('click', () => {
@@ -411,6 +427,7 @@ class CallRoomApp
             this.toggleReactionTray(false);
             this.toggleInviteSheet(false);
             this.toggleMoreTray(false);
+            this.resumeRemoteMediaPlayback();
             this.showControlsTemporarily();
         });
 
@@ -517,14 +534,17 @@ class CallRoomApp
             : (Array.isArray(this.session?.participant_ids) ? this.session.participant_ids : []).filter((id) => sanitizeId(id) > 0);
         const joinedCount = connectedParticipantIds.length;
         const hasRemotePeers = this.activePeerIds().length > 0;
+        const establishedMedia = this.hasEstablishedMedia();
 
         if (this.statusLabel) {
             if (this.session.status === 'ringing') {
                 this.statusLabel.textContent = 'Ringing…';
-            } else if (hasRemotePeers && (!this.grid || this.grid.children.length === 0)) {
+            } else if (hasRemotePeers && !establishedMedia) {
                 this.statusLabel.textContent = 'Connecting media…';
-            } else if (joinedCount > 1) {
-                this.statusLabel.textContent = `${joinedCount} people are connected`;
+            } else if (joinedCount > 1 || establishedMedia) {
+                const displayCount = Math.max(joinedCount, this.connectedPeerCount() + 1);
+
+                this.statusLabel.textContent = `${displayCount} connected`;
             } else {
                 this.statusLabel.textContent = 'Connecting…';
             }
@@ -535,7 +555,7 @@ class CallRoomApp
                 this.emptyLabel.textContent = this.session?.caller?.id === this.authId
                     ? 'Waiting for them to answer…'
                     : 'Opening your call room…';
-            } else if (hasRemotePeers) {
+            } else if (hasRemotePeers && !establishedMedia) {
                 this.emptyLabel.textContent = 'Connecting media…';
             } else if (this.session?.group?.name) {
                 this.emptyLabel.textContent = 'Waiting for others to join…';
@@ -802,6 +822,7 @@ class CallRoomApp
 
             if (nextStatus === 'active') {
                 await this.enterConnectedState();
+                await this.ensurePeerConnectivity();
 
                 if (wasConnected) {
                     const nextParticipantSignature = this.participantSignature(this.session?.participant_ids || []);
@@ -852,7 +873,10 @@ class CallRoomApp
                 return;
             }
 
-            const connectedCount = this.joinedParticipantIds().length;
+            const connectedCount = Math.max(
+                this.connectedPeerCount() + 1,
+                this.hasEstablishedMedia() ? 2 : 0
+            );
             const duration = formatDuration(Math.floor((Date.now() - this.callStartedAt) / 1000));
             const suffix = connectedCount > 1 ? `${connectedCount} connected` : 'Connected';
 
@@ -906,7 +930,7 @@ class CallRoomApp
             }));
 
             if (rtts.length === 0) {
-                this.updateQualityBars(0);
+                this.updateQualityBars(this.hasEstablishedMedia() ? 3 : 0);
                 return;
             }
 
@@ -1024,6 +1048,38 @@ class CallRoomApp
         this.renderEmptyState();
     }
 
+    async ensurePeerConnectivity()
+    {
+        if (this.roomFinished || String(this.session?.status || '') !== 'active') {
+            return;
+        }
+
+        const targetPeerIds = this.activePeerIds();
+
+        if (!targetPeerIds.length) {
+            return;
+        }
+
+        await Promise.all(targetPeerIds.map(async (peerId) => {
+            const peer = this.ensurePeerConnection(peerId);
+            await this.syncLocalTracksToPeer(peerId);
+
+            const connectionState = String(peer.connection?.connectionState || '');
+            const iceConnectionState = String(peer.connection?.iceConnectionState || '');
+            const shouldRetryOffer = sanitizeId(this.authId) < sanitizeId(peerId)
+                && !peer.negotiating
+                && peer.connection.signalingState === 'stable'
+                && !['connected'].includes(connectionState)
+                && !['connected', 'completed'].includes(iceConnectionState);
+
+            if (shouldRetryOffer) {
+                await this.negotiateWithPeer(peerId);
+            }
+        }));
+
+        this.renderSessionSummary();
+    }
+
     ensurePeerConnection(peerId)
     {
         if (this.peers.has(peerId)) {
@@ -1075,10 +1131,23 @@ class CallRoomApp
 
         connection.onconnectionstatechange = () => {
             tile.element.dataset.connectionState = connection.connectionState;
+            this.renderSessionSummary();
 
             if (['failed', 'closed'].includes(connection.connectionState)) {
                 this.cleanupPeer(peerId);
             }
+        };
+
+        connection.oniceconnectionstatechange = () => {
+            tile.element.dataset.iceConnectionState = connection.iceConnectionState;
+
+            if (['failed', 'disconnected'].includes(connection.iceConnectionState)) {
+                window.setTimeout(() => {
+                    this.ensurePeerConnectivity().catch(() => {});
+                }, 180);
+            }
+
+            this.renderSessionSummary();
         };
 
         if (sanitizeId(this.authId) < sanitizeId(peerId)) {
@@ -1610,6 +1679,9 @@ class CallRoomApp
         element.innerHTML = `
             <video class="call-room__tile-video" autoplay playsinline></video>
             <div class="call-room__tile-gradient"></div>
+            <button type="button" class="call-room__tile-fullscreen" aria-label="View full screen">
+                <i class="fas fa-expand"></i>
+            </button>
             <span class="call-room__tile-name">${participantName(participant)}</span>
             <span class="call-room__tile-indicator"><i class="fas fa-microphone-slash"></i></span>
         `;
@@ -1622,6 +1694,19 @@ class CallRoomApp
             video.play?.().catch(() => {});
         });
         video.srcObject = stream;
+        element.querySelector('.call-room__tile-fullscreen')?.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            const target = video;
+
+            if (document.fullscreenElement === target) {
+                document.exitFullscreen?.().catch?.(() => {});
+                return;
+            }
+
+            target.requestFullscreen?.().catch?.(() => {});
+        });
 
         this.grid?.appendChild(element);
 
@@ -1640,6 +1725,13 @@ class CallRoomApp
         const hasRemoteTiles = this.grid?.children?.length > 0;
 
         this.emptyState.classList.toggle('is-hidden', hasRemoteTiles);
+    }
+
+    resumeRemoteMediaPlayback()
+    {
+        this.grid?.querySelectorAll('video').forEach((videoElement) => {
+            videoElement.play?.().catch(() => {});
+        });
     }
 
     attachSpeakerMonitor(peerId, stream)
@@ -1695,11 +1787,13 @@ class CallRoomApp
         peer.connection.ontrack = null;
         peer.connection.onicecandidate = null;
         peer.connection.onconnectionstatechange = null;
+        peer.connection.oniceconnectionstatechange = null;
         peer.connection.close();
         peer.tile?.element?.remove();
         this.peers.delete(peerId);
         this.pendingCandidates.delete(peerId);
         this.renderEmptyState();
+        this.renderSessionSummary();
     }
 
     async endCall(silent = false)

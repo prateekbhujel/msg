@@ -39,52 +39,80 @@ class CallSignal implements ShouldBroadcastNow
         $callerId = (int) $this->session->caller_id;
         $calleeId = (int) $this->session->callee_id;
         $fromId = (int) ($this->fromId ?? auth()->id());
+        $isRealtimeSignal = $this->type === 'signal';
 
         return [
             'type' => $this->type,
-            'session' => [
-                'uuid' => $this->session->uuid,
-                'call_type' => $this->session->call_type,
-                'status' => $this->session->status,
-                'timeout_seconds' => (int) data_get($this->session->historyMessage?->meta, 'timeout_seconds', 30),
-                'conversation_key' => data_get($this->session->meta, 'conversation_key'),
-                'participant_ids' => $this->session->participantIds(),
-                'joined_participant_ids' => $this->session->joinedParticipantIds(),
-                'group_call_id' => $this->session->uuid,
-                'is_group' => (bool) data_get($this->session->meta, 'is_group', false),
-                'group' => data_get($this->session->meta, 'is_group')
-                    ? [
-                        'id' => (int) data_get($this->session->meta, 'group_id', 0),
-                        'name' => data_get($this->session->meta, 'group_name'),
-                        'avatar' => data_get($this->session->meta, 'group_avatar', 'default/avatar.png'),
-                        'member_count' => (int) data_get($this->session->meta, 'group_member_count', count($this->session->participantIds())),
-                    ]
-                    : null,
-                'caller' => [
-                    'id' => $this->session->caller?->id ? (int) $this->session->caller->id : null,
-                    'name' => $this->session->caller?->name,
-                    'avatar' => $this->session->caller?->avatar,
-                    'user_name' => $this->session->caller?->user_name,
-                ],
-                'callee' => [
-                    'id' => $this->session->callee?->id ? (int) $this->session->callee->id : null,
-                    'name' => $this->session->callee?->name,
-                    'avatar' => $this->session->callee?->avatar,
-                    'user_name' => $this->session->callee?->user_name,
-                ],
-                'participants' => $this->session->participantUsers()->map(fn ($user) => [
-                    'id' => (int) $user->id,
-                    'name' => $user->name,
-                    'avatar' => $user->avatar,
-                    'user_name' => $user->user_name,
-                    'joined' => in_array((int) $user->id, $this->session->joinedParticipantIds(), true),
-                ])->values()->all(),
-            ],
+            'session' => $isRealtimeSignal
+                ? $this->compactSessionPayload()
+                : $this->fullSessionPayload(),
             'payload' => $this->payload,
-            'history_message' => $this->historyMessagePayload(),
-            'history_message_html' => $this->historyMessageHtml(),
+            'history_message' => $isRealtimeSignal ? null : $this->historyMessagePayload(),
+            'history_message_html' => $isRealtimeSignal ? null : $this->historyMessageHtml(),
             'from_id' => $fromId,
             'to_id' => $callerId === $fromId ? $calleeId : $callerId,
+        ];
+    }
+
+    protected function compactSessionPayload(): array
+    {
+        return [
+            'uuid' => $this->session->uuid,
+            'call_type' => $this->session->call_type,
+            'status' => $this->session->status,
+            'conversation_key' => data_get($this->session->meta, 'conversation_key'),
+            'participant_ids' => $this->session->participantIds(),
+            'joined_participant_ids' => $this->session->joinedParticipantIds(),
+            'group_call_id' => $this->session->uuid,
+            'is_group' => (bool) data_get($this->session->meta, 'is_group', false),
+            'group' => data_get($this->session->meta, 'is_group')
+                ? [
+                    'id' => (int) data_get($this->session->meta, 'group_id', 0),
+                    'name' => data_get($this->session->meta, 'group_name'),
+                ]
+                : null,
+        ];
+    }
+
+    protected function fullSessionPayload(): array
+    {
+        return [
+            'uuid' => $this->session->uuid,
+            'call_type' => $this->session->call_type,
+            'status' => $this->session->status,
+            'timeout_seconds' => (int) data_get($this->session->historyMessage?->meta, 'timeout_seconds', 30),
+            'conversation_key' => data_get($this->session->meta, 'conversation_key'),
+            'participant_ids' => $this->session->participantIds(),
+            'joined_participant_ids' => $this->session->joinedParticipantIds(),
+            'group_call_id' => $this->session->uuid,
+            'is_group' => (bool) data_get($this->session->meta, 'is_group', false),
+            'group' => data_get($this->session->meta, 'is_group')
+                ? [
+                    'id' => (int) data_get($this->session->meta, 'group_id', 0),
+                    'name' => data_get($this->session->meta, 'group_name'),
+                    'avatar' => data_get($this->session->meta, 'group_avatar', 'default/avatar.png'),
+                    'member_count' => (int) data_get($this->session->meta, 'group_member_count', count($this->session->participantIds())),
+                ]
+                : null,
+            'caller' => [
+                'id' => $this->session->caller?->id ? (int) $this->session->caller->id : null,
+                'name' => $this->session->caller?->name,
+                'avatar' => $this->session->caller?->avatar,
+                'user_name' => $this->session->caller?->user_name,
+            ],
+            'callee' => [
+                'id' => $this->session->callee?->id ? (int) $this->session->callee->id : null,
+                'name' => $this->session->callee?->name,
+                'avatar' => $this->session->callee?->avatar,
+                'user_name' => $this->session->callee?->user_name,
+            ],
+            'participants' => $this->session->participantUsers()->map(fn ($user) => [
+                'id' => (int) $user->id,
+                'name' => $user->name,
+                'avatar' => $user->avatar,
+                'user_name' => $user->user_name,
+                'joined' => in_array((int) $user->id, $this->session->joinedParticipantIds(), true),
+            ])->values()->all(),
         ];
     }
 

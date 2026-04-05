@@ -1130,6 +1130,8 @@ class CallRoomApp
             lastNegotiationAt: 0,
         };
 
+        this.peers.set(peerId, peer);
+
         connection.ontrack = (event) => {
             const stream = event.streams?.[0] || null;
             const incomingTracks = stream?.getTracks?.() || (event.track ? [event.track] : []);
@@ -1199,8 +1201,6 @@ class CallRoomApp
                 this.bindReactionChannel(peerId, event.channel);
             }
         };
-
-        this.peers.set(peerId, peer);
 
         return peer;
     }
@@ -1575,7 +1575,12 @@ class CallRoomApp
 
     bindReactionChannel(peerId, channel)
     {
-        const peer = this.ensurePeerConnection(peerId);
+        const peer = this.peers.get(peerId);
+
+        if (!peer) {
+            return;
+        }
+
         peer.dataChannel = channel;
 
         channel.addEventListener('message', (event) => {

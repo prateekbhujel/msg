@@ -41,7 +41,6 @@
             <span class="tab-badge" id="groups-unread-badge"></span>
         </button>
         <button type="button" class="msg-tab" data-tab="active">
-            <span class="active-dot-indicator"></span>
             <i class="fas fa-circle"></i>
             <span>Active</span>
             <span class="tab-badge" id="active-users-badge"></span>

@@ -2452,11 +2452,15 @@ function messageFormReset()
 
 function setHeaderConversationActions(type = 'user')
 {
+    const hasConversation = !!getConversationKey();
     const isDirect = type === 'user';
     const isSelfConversation = isDirect && Number(getMessengerId()) === Number(auth_id);
 
-    $('.favourite').toggleClass('d-none', !isDirect || isSelfConversation);
-    $('.start-call').toggleClass('d-none', !isDirect || isSelfConversation);
+    $('.favourite').toggleClass('d-none', !hasConversation || !isDirect || isSelfConversation);
+    $('.start-call').toggleClass('d-none', !hasConversation || isSelfConversation);
+
+    $('.start-call[data-call-type="audio"]').attr('title', type === 'group' ? 'Group audio call' : 'Audio call');
+    $('.start-call[data-call-type="video"]').attr('title', type === 'group' ? 'Group video call' : 'Video call');
 }
 
 function renderConversationMembers(members = [])

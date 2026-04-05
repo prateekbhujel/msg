@@ -1,6 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    @php
+        $versionedAsset = function (string $path): string {
+            $absolutePath = public_path($path);
+            $version = is_file($absolutePath) ? filemtime($absolutePath) : null;
+
+            return asset($path) . ($version ? '?v=' . $version : '');
+        };
+    @endphp
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="csrf_token" content="{{ csrf_token() }}">
@@ -11,12 +19,12 @@
     <meta name="call-room-id" content="{{ $session->uuid }}">
     <meta name="theme-color" content="#050816">
     <title>{{ config('app.name') }} Call</title>
-    <link rel="icon" type="image/png" href="{{ asset('assets/images/icon.png') }}">
-    <link rel="stylesheet" href="{{ asset('assets/css/all.min.css') }}">
-    <link rel="stylesheet" href="{{ asset('assets/css/bootstrap.min.css') }}">
-    <link rel="stylesheet" href="{{ asset('assets/css/style.css') }}">
-    <link rel="stylesheet" href="{{ asset('assets/css/responsive.css') }}">
-    <link rel="stylesheet" href="{{ asset('assets/css/call-room.css') }}">
+    <link rel="icon" type="image/png" href="{{ $versionedAsset('assets/images/icon.png') }}">
+    <link rel="stylesheet" href="{{ $versionedAsset('assets/css/all.min.css') }}">
+    <link rel="stylesheet" href="{{ $versionedAsset('assets/css/bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ $versionedAsset('assets/css/style.css') }}">
+    <link rel="stylesheet" href="{{ $versionedAsset('assets/css/responsive.css') }}">
+    <link rel="stylesheet" href="{{ $versionedAsset('assets/css/call-room.css') }}">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.css">
     @routes
     @vite(['resources/js/bootstrap.js', 'resources/js/call-room.js'])

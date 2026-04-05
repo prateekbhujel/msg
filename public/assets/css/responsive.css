@@ -533,19 +533,19 @@
     }
 
     .msg-tab-bar {
-        padding: 8px 10px 0;
-        gap: 6px;
+        padding: 7px 9px 0;
+        gap: 5px;
     }
 
     .msg-tab {
-        border-radius: 16px;
-        padding: 9px 8px 8px;
+        border-radius: 14px;
+        padding: 8px 7px 7px;
     }
 
     .group-card,
     .active-user-item {
-        padding: 12px;
-        border-radius: 20px;
+        padding: 10px 11px;
+        border-radius: 18px;
     }
 
     .group-card {
@@ -556,6 +556,7 @@
     .user-quick-actions {
         width: 100%;
         justify-content: flex-start;
+        gap: 5px;
     }
 
     .call-screen__header {

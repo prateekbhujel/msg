@@ -301,10 +301,12 @@ function setDarkMode(enabled = false)
 function loadDarkModePreference()
 {
     try {
-        setDarkMode(window.localStorage.getItem(MESSENGER_DARKMODE_STORAGE_KEY) === '1');
+        window.localStorage.removeItem(MESSENGER_DARKMODE_STORAGE_KEY);
     } catch (error) {
-        setDarkMode(false);
+        // Ignore storage failures and keep the messenger in the default theme.
     }
+
+    setDarkMode(false);
 }
 
 function persistActiveConversation(conversationKey, options = {})
@@ -891,6 +893,26 @@ function hideTypingIndicator()
     }
 
     typingIndicatorLabel.addClass('d-none').text('');
+}
+
+function applySeenState(conversationKey, lastSeenMessageId)
+{
+    const safeConversationKey = String(conversationKey || '').trim();
+    const safeLastSeenId = Number(lastSeenMessageId || 0);
+
+    if (!safeConversationKey || safeConversationKey !== getConversationKey() || safeLastSeenId <= 0) {
+        return;
+    }
+
+    messageBoxContainer.find('.message-card').each(function () {
+        const messageId = Number($(this).data('id') || 0);
+
+        if (messageId > 0 && messageId <= safeLastSeenId) {
+            $(this)
+                .find('.wsus__single_chat.chat_right .time.message-time--outgoing')
+                .addClass('message-time--seen');
+        }
+    });
 }
 
 function hideSmartReplies()
@@ -1993,6 +2015,10 @@ function renderReceivedMessageCard(e)
     }
 
     const mediaMarkup = renderMessageMedia(attachments, messageType, e.id);
+    const timeClasses = [
+        isMine && !isGroupMessage ? 'message-time--outgoing' : '',
+        isMine && !isGroupMessage && e.seen ? 'message-time--seen' : '',
+    ].filter(Boolean).join(' ');
 
     if (messageType === 'voice') {
         const voiceAttachment = attachments[0] || null;
@@ -2020,7 +2046,7 @@ function renderReceivedMessageCard(e)
                     })}
                     ${renderReactionSummaryMarkup(e.id, reactions)}
                     ${renderMessageActionsMarkup({ messageId: e.id, canDelete, canInteract })}
-                    <span class="time">${messageTime}</span>
+                    <span class="time ${timeClasses}">${messageTime}</span>
                 </div>
             </div>
         `;
@@ -2037,7 +2063,7 @@ function renderReceivedMessageCard(e)
                     ${mediaMarkup}
                     ${renderReactionSummaryMarkup(e.id, reactions)}
                     ${renderMessageActionsMarkup({ messageId: e.id, canDelete, canInteract })}
-                    <span class="time">${messageTime}</span>
+                    <span class="time ${timeClasses}">${messageTime}</span>
                 </div>
             </div>
         `;
@@ -2052,7 +2078,7 @@ function renderReceivedMessageCard(e)
                 ${body ? `<p class="messages">${body}</p>` : ''}
                 ${renderReactionSummaryMarkup(e.id, reactions)}
                 ${renderMessageActionsMarkup({ messageId: e.id, canDelete, canInteract })}
-                <span class="time">${messageTime}</span>
+                <span class="time ${timeClasses}">${messageTime}</span>
             </div>
         </div>
     `;
@@ -3102,7 +3128,7 @@ window.Echo.private('message.' + auth_id)
 
         applyReactionState(event.message_id, reactions);
     })
-    .listen("TypingIndicatorUpdated", (event) => {
+    .listen('.typing.indicator', (event) => {
         if (event.conversation_key !== getConversationKey() || Number(event.from_id) === Number(auth_id)) {
             return;
         }
@@ -3112,6 +3138,9 @@ window.Echo.private('message.' + auth_id)
         } else {
             hideTypingIndicator();
         }
+    })
+    .listen('.message.seen', (event) => {
+        applySeenState(event.conversation_key, event.last_seen_message_id);
     });
 
 /** 

@@ -1,8 +1,11 @@
 <?php
 
+use App\Events\MessageSeenUpdated;
+use App\Events\TypingIndicatorUpdated;
 use App\Models\ConversationSetting;
 use App\Models\Message;
 use App\Models\User;
+use Illuminate\Support\Facades\Event;
 
 it('returns smart reply suggestions using the AI endpoint', function () {
     $sender = User::factory()->create();
@@ -95,4 +98,60 @@ it('normalizes emoji shortcuts and stores a lightweight language hint on send', 
 
     expect($message->body)->toContain('😊');
     expect(data_get($message->meta, 'language'))->toBe('ne');
+});
+
+it('broadcasts typing indicators using the recipient conversation key for direct chats', function () {
+    Event::fake([TypingIndicatorUpdated::class]);
+
+    $sender = User::factory()->create();
+    $recipient = User::factory()->create();
+
+    $this->actingAs($sender)->postJson(route('messenger.typing'), [
+        'conversation_key' => 'user:' . $recipient->id,
+        'typing' => true,
+    ])->assertOk();
+
+    Event::assertDispatched(TypingIndicatorUpdated::class, function (TypingIndicatorUpdated $event) use ($sender, $recipient) {
+        return $event->recipientIds === [$recipient->id]
+            && $event->conversationKey === 'user:' . $sender->id
+            && $event->fromId === $sender->id
+            && $event->typing === true;
+    });
+});
+
+it('broadcasts seen updates back to the direct message sender', function () {
+    Event::fake([MessageSeenUpdated::class]);
+
+    $sender = User::factory()->create();
+    $recipient = User::factory()->create();
+
+    $firstMessage = Message::create([
+        'from_id' => $sender->id,
+        'to_id' => $recipient->id,
+        'body' => 'First unread',
+        'message_type' => 'text',
+        'seen' => false,
+    ]);
+
+    $lastMessage = Message::create([
+        'from_id' => $sender->id,
+        'to_id' => $recipient->id,
+        'body' => 'Second unread',
+        'message_type' => 'text',
+        'seen' => false,
+    ]);
+
+    $this->actingAs($recipient)->postJson(route('messenger.make-seen'), [
+        'conversation_key' => 'user:' . $sender->id,
+    ])->assertOk();
+
+    expect($firstMessage->fresh()->seen)->toBeTrue();
+    expect($lastMessage->fresh()->seen)->toBeTrue();
+
+    Event::assertDispatched(MessageSeenUpdated::class, function (MessageSeenUpdated $event) use ($sender, $recipient, $lastMessage) {
+        return $event->recipientId === $sender->id
+            && $event->conversationKey === 'user:' . $recipient->id
+            && $event->viewerId === $recipient->id
+            && $event->lastSeenMessageId === $lastMessage->id;
+    });
 });

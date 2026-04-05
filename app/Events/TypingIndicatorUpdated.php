@@ -49,4 +49,9 @@ class TypingIndicatorUpdated implements ShouldBroadcast
             'typing' => $this->typing,
         ];
     }
+
+    public function broadcastAs(): string
+    {
+        return 'typing.indicator';
+    }
 }

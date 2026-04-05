@@ -15,13 +15,6 @@
             <ul class="conversation-member-list"></ul>
         </div>
         <div class="chat-theme-panel">
-            <div class="chat-theme-panel__header">
-                <p class="photo_gallery">Appearance</p>
-                <button type="button" class="chat-darkmode-toggle" data-darkmode-toggle aria-pressed="false">
-                    <i class="fas fa-moon"></i>
-                    <span>Dark Mode</span>
-                </button>
-            </div>
             <p class="photo_gallery">Theme Color</p>
             <div class="chat-theme-swatches">
                 <button type="button" class="chat-theme-swatch" data-chat-theme-color="#2180f3" data-chat-theme-light="#ecf5ff" style="--theme-swatch:#2180f3;" aria-label="Ocean blue"></button>

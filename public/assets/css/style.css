@@ -2221,6 +2221,7 @@ body.incoming-call-open {
 }
 
 .wsus__chat_area_footer .footer_message {
+    --composer-send-size: 40px;
     background: var(--surfacePanelSoft);
     border-radius: 35px;
     padding: 14px 14px 12px;
@@ -2711,37 +2712,46 @@ body.incoming-call-open {
 .wsus__chat_area_footer .footer_message .composer-actions {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 0;
     position: static;
     transform: none;
     justify-content: flex-start;
-    width: 100%;
+    width: auto;
+    flex-wrap: nowrap;
 }
 
 .wsus__chat_area_footer .footer_message .composer-leading {
-    min-width: 122px;
     display: flex;
     align-items: center;
+    min-width: 0;
 }
 
 .wsus__chat_area_footer .footer_message .composer-trailing {
-    min-width: 72px;
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    gap: 10px;
+    gap: 0;
+    min-width: 0;
 }
 
 .wsus__chat_area_footer .footer_message .composer-input-shell {
     min-width: 0;
     display: flex;
     align-items: center;
+    padding: 0 6px 0 2px;
 }
 
 .wsus__chat_area_footer .footer_message .composer-voice-control {
     display: flex;
     align-items: center;
     gap: 8px;
+    max-width: 0;
+    margin-right: 0;
+    opacity: 0;
+    overflow: hidden;
+    transform: translateX(-8px);
+    pointer-events: none;
+    transition: max-width .22s ease, margin-right .22s ease, opacity .18s ease, transform .22s ease;
 }
 
 .wsus__chat_area_footer .footer_message .voice-record-status {
@@ -2903,7 +2913,7 @@ body.incoming-call-open {
     padding: 8px 10px;
     border-radius: 24px;
     display: grid;
-    grid-template-columns: 122px minmax(0, 1fr) 72px;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
     gap: 10px;
     position: relative;
@@ -2913,6 +2923,13 @@ body.incoming-call-open {
 
 .wsus__chat_area_footer form .file {
     position: static;
+    max-width: 0;
+    margin-right: 0;
+    opacity: 0;
+    overflow: hidden;
+    transform: translateX(-8px);
+    pointer-events: none;
+    transition: max-width .22s ease, margin-right .22s ease, opacity .18s ease, transform .22s ease;
 }
 
 .wsus__chat_area_footer form .composer-actions .file {
@@ -2977,14 +2994,19 @@ body.incoming-call-open {
 
 .wsus__chat_area_footer form .message-send-button {
     position: static;
-    width: 40px;
-    height: 40px;
-    line-height: 40px;
+    width: 0;
+    height: 0;
+    line-height: 0;
+    margin-left: 0;
     background: linear-gradient(135deg, var(--colorPrimary) 0%, #4f46e5 100%);
     color: #fff;
     border-radius: 50%;
     box-shadow: 0 10px 20px rgba(var(--colorPrimaryRgb), 0.22);
-    transition: opacity .2s ease, transform .2s ease, background .2s ease, color .2s ease, box-shadow .2s ease;
+    opacity: 0;
+    overflow: hidden;
+    transform: scale(.82);
+    pointer-events: none;
+    transition: width .22s ease, height .22s ease, line-height .22s ease, margin-left .22s ease, opacity .2s ease, transform .2s ease, background .2s ease, color .2s ease, box-shadow .2s ease;
     flex-shrink: 0;
 }
 
@@ -2998,41 +3020,44 @@ body.incoming-call-open {
     transform: translateX(1px);
 }
 
-.wsus__chat_area_footer .footer_message .file label,
-.wsus__chat_area_footer .footer_message .voice-record-toggle,
-.wsus__chat_area_footer .footer_message .message-send-button {
-    opacity: 0;
-    transform: translateY(4px) scale(.92);
-    pointer-events: none;
-}
-
 .wsus__chat_area_footer .footer_message .composer-emoji-trigger {
     opacity: .82;
 }
 
-.wsus__chat_area_footer .footer_message.is-focused .file label,
-.wsus__chat_area_footer .footer_message.is-focused .voice-record-toggle,
-.wsus__chat_area_footer .footer_message.is-focused .message-send-button,
-.wsus__chat_area_footer .footer_message.has-draft .file label,
-.wsus__chat_area_footer .footer_message.has-draft .voice-record-toggle,
-.wsus__chat_area_footer .footer_message.has-draft .message-send-button,
-.wsus__chat_area_footer .footer_message.has-attachments .file label,
-.wsus__chat_area_footer .footer_message.has-attachments .voice-record-toggle,
-.wsus__chat_area_footer .footer_message.has-attachments .message-send-button,
-.wsus__chat_area_footer .footer_message.has-voice-preview .file label,
-.wsus__chat_area_footer .footer_message.has-voice-preview .voice-record-toggle,
-.wsus__chat_area_footer .footer_message.has-voice-preview .message-send-button,
-.wsus__chat_area_footer .footer_message.has-reply-preview .file label,
-.wsus__chat_area_footer .footer_message.has-reply-preview .voice-record-toggle,
-.wsus__chat_area_footer .footer_message.has-reply-preview .message-send-button,
-.wsus__chat_area_footer .footer_message.is-recording .file label,
-.wsus__chat_area_footer .footer_message.is-recording .voice-record-toggle,
-.wsus__chat_area_footer .footer_message.is-recording .message-send-button,
-.wsus__chat_area_footer .footer_message.is-sending .file label,
-.wsus__chat_area_footer .footer_message.is-sending .voice-record-toggle,
-.wsus__chat_area_footer .footer_message.is-sending .message-send-button {
+.wsus__chat_area_footer .footer_message.is-focused .file,
+.wsus__chat_area_footer .footer_message.has-draft .file,
+.wsus__chat_area_footer .footer_message.has-attachments .file,
+.wsus__chat_area_footer .footer_message.has-voice-preview .file,
+.wsus__chat_area_footer .footer_message.has-reply-preview .file,
+.wsus__chat_area_footer .footer_message.is-recording .file,
+.wsus__chat_area_footer .footer_message.is-sending .file,
+.wsus__chat_area_footer .footer_message.is-focused .composer-voice-control,
+.wsus__chat_area_footer .footer_message.has-draft .composer-voice-control,
+.wsus__chat_area_footer .footer_message.has-attachments .composer-voice-control,
+.wsus__chat_area_footer .footer_message.has-voice-preview .composer-voice-control,
+.wsus__chat_area_footer .footer_message.has-reply-preview .composer-voice-control,
+.wsus__chat_area_footer .footer_message.is-recording .composer-voice-control,
+.wsus__chat_area_footer .footer_message.is-sending .composer-voice-control {
+    max-width: 48px;
+    margin-right: 8px;
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translateX(0);
+    pointer-events: auto;
+}
+
+.wsus__chat_area_footer .footer_message.is-focused .message-send-button,
+.wsus__chat_area_footer .footer_message.has-draft .message-send-button,
+.wsus__chat_area_footer .footer_message.has-attachments .message-send-button,
+.wsus__chat_area_footer .footer_message.has-voice-preview .message-send-button,
+.wsus__chat_area_footer .footer_message.has-reply-preview .message-send-button,
+.wsus__chat_area_footer .footer_message.is-recording .message-send-button,
+.wsus__chat_area_footer .footer_message.is-sending .message-send-button {
+    width: var(--composer-send-size);
+    height: var(--composer-send-size);
+    line-height: var(--composer-send-size);
+    margin-left: 8px;
+    opacity: 1;
+    transform: scale(1);
     pointer-events: auto;
 }
 

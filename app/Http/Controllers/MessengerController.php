@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Events\Message as MessageEvent;
 use App\Events\MessageReactionUpdated;
 use App\Events\TypingIndicatorUpdated;
+use App\Events\MessageSeenUpdated;
 use App\Models\ChatGroup;
 use App\Models\ChatGroupMember;
 use App\Models\ConversationSetting;
@@ -362,12 +363,31 @@ class MessengerController extends Controller
             return true;
         }
 
-        Message::query()
+        $messagesToMarkSeen = Message::query()
             ->whereNull('group_id')
             ->where('from_id', $conversation['user']->id)
             ->where('to_id', Auth::id())
             ->where('seen', 0)
+            ->get(['id']);
+
+        if ($messagesToMarkSeen->isEmpty()) {
+            return true;
+        }
+
+        Message::query()
+            ->whereKey($messagesToMarkSeen->pluck('id'))
             ->update(['seen' => 1]);
+
+        $lastSeenMessageId = (int) $messagesToMarkSeen->max('id');
+
+        if ($lastSeenMessageId > 0) {
+            $this->dispatchBroadcastSafely(static fn () => MessageSeenUpdated::dispatch(
+                (int) $conversation['user']->id,
+                'user:' . (int) Auth::id(),
+                (int) Auth::id(),
+                $lastSeenMessageId,
+            ));
+        }
 
         return true;
     }
@@ -505,11 +525,14 @@ class MessengerController extends Controller
         $recipientIds = $conversation['type'] === 'group'
             ? $conversation['group']->members()->pluck('users.id')->map(fn ($id) => (int) $id)->reject(fn ($id) => $id === $authId)->values()->all()
             : collect([(int) $conversation['user']->id])->reject(fn ($id) => $id === $authId)->values()->all();
+        $broadcastConversationKey = $conversation['type'] === 'group'
+            ? $conversation['conversation_key']
+            : 'user:' . $authId;
 
         if (! empty($recipientIds)) {
             $this->dispatchBroadcastSafely(static fn () => TypingIndicatorUpdated::dispatch(
                 $recipientIds,
-                $conversation['conversation_key'],
+                $broadcastConversationKey,
                 $authId,
                 Auth::user()->name,
                 $typing

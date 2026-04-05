@@ -196,6 +196,9 @@ class CallRoomApp
         this.callEnding = false;
         this.roomFinished = false;
         this.leaveSignalSent = false;
+        this.connectionBootstrapPromise = null;
+        this.sessionRefreshTimer = null;
+        this.sessionRefreshRequest = null;
         this.initialized = false;
     }
 
@@ -214,6 +217,7 @@ class CallRoomApp
         this.renderSessionSummary();
         this.updateControlStates();
         this.setOverlayVisible(true);
+        this.startSessionRefreshLoop();
 
         if (this.session.status === 'ringing') {
             this.enterRingingState();
@@ -550,6 +554,7 @@ class CallRoomApp
         this.renderSessionSummary();
         this.updateOverlayCopy('Waiting for someone to answer…');
         this.startRingCountdown();
+        this.refreshSessionState().catch(() => {});
 
         if (this.session?.caller?.id === this.authId) {
             this.prepareLocalMedia(this.isVideoCall()).catch(() => {});
@@ -558,19 +563,37 @@ class CallRoomApp
 
     async enterConnectedState()
     {
-        await this.joinIfNeeded();
-        await this.prepareLocalMedia(this.isVideoCall());
-        await this.acquireWakeLock();
+        if (this.connectionBootstrapPromise) {
+            return this.connectionBootstrapPromise;
+        }
 
-        this.setOverlayVisible(false);
-        this.stopRingCountdown();
-        this.callStartedAt = this.callStartedAt || Date.now();
-        this.startCallTimer();
-        this.startQualityMonitor();
-        await this.syncPeerRoster();
-        this.renderSessionSummary();
-        this.showControlsTemporarily();
-        document.body.classList.add('call-room-active');
+        if (this.callStartedAt && document.body.classList.contains('call-room-active')) {
+            await this.syncPeerRoster();
+            this.renderSessionSummary();
+            return;
+        }
+
+        this.connectionBootstrapPromise = (async () => {
+            await this.joinIfNeeded();
+            await this.prepareLocalMedia(this.isVideoCall());
+            await this.acquireWakeLock();
+
+            this.setOverlayVisible(false);
+            this.stopRingCountdown();
+
+            const acceptedAt = this.session?.accepted_at ? new Date(this.session.accepted_at).getTime() : NaN;
+            this.callStartedAt = this.callStartedAt || (Number.isNaN(acceptedAt) ? Date.now() : acceptedAt);
+            this.startCallTimer();
+            this.startQualityMonitor();
+            await this.syncPeerRoster();
+            this.renderSessionSummary();
+            this.showControlsTemporarily();
+            document.body.classList.add('call-room-active');
+        })().finally(() => {
+            this.connectionBootstrapPromise = null;
+        });
+
+        return this.connectionBootstrapPromise;
     }
 
     async joinIfNeeded()
@@ -656,6 +679,117 @@ class CallRoomApp
             window.clearInterval(this.ringCountdownTimer);
             this.ringCountdownTimer = null;
         }
+    }
+
+    startSessionRefreshLoop()
+    {
+        if (this.sessionRefreshTimer || !this.session?.uuid) {
+            return;
+        }
+
+        const refresh = () => {
+            this.refreshSessionState().catch(() => {});
+        };
+
+        refresh();
+        this.sessionRefreshTimer = window.setInterval(refresh, 2200);
+    }
+
+    stopSessionRefreshLoop()
+    {
+        if (this.sessionRefreshTimer) {
+            window.clearInterval(this.sessionRefreshTimer);
+            this.sessionRefreshTimer = null;
+        }
+    }
+
+    participantSignature(ids = [])
+    {
+        return Array.from(new Set(
+            (Array.isArray(ids) ? ids : [])
+                .map((id) => sanitizeId(id))
+                .filter(Boolean)
+        ))
+            .sort((left, right) => left - right)
+            .join(',');
+    }
+
+    async refreshSessionState()
+    {
+        if (this.roomFinished || !this.session?.uuid) {
+            return;
+        }
+
+        if (this.sessionRefreshRequest) {
+            return this.sessionRefreshRequest;
+        }
+
+        this.sessionRefreshRequest = axios.get(route('messenger.calls.show', {
+            session: this.session.uuid,
+        }), {
+            params: {
+                _t: Date.now(),
+            },
+        }).then(async (response) => {
+            const nextSession = response?.data?.session;
+
+            if (!nextSession?.uuid) {
+                return;
+            }
+
+            const previousStatus = String(this.session?.status || '');
+            const previousParticipantSignature = this.participantSignature(this.session?.participant_ids || []);
+            const previousJoinedSignature = this.participantSignature(this.session?.joined_participant_ids || []);
+            const wasConnected = previousStatus === 'active' || !!this.callStartedAt;
+
+            this.session = {
+                ...this.session,
+                ...nextSession,
+            };
+            this.decorateSessionPayload(this.session);
+            this.renderSessionSummary();
+
+            const nextStatus = String(this.session?.status || '');
+
+            if (nextStatus === 'active') {
+                await this.enterConnectedState();
+
+                if (wasConnected) {
+                    const nextParticipantSignature = this.participantSignature(this.session?.participant_ids || []);
+                    const nextJoinedSignature = this.participantSignature(this.session?.joined_participant_ids || []);
+
+                    if (
+                        previousParticipantSignature !== nextParticipantSignature
+                        || previousJoinedSignature !== nextJoinedSignature
+                    ) {
+                        await this.syncPeerRoster();
+                        this.renderSessionSummary();
+                    }
+                }
+
+                return;
+            }
+
+            if (nextStatus === 'declined') {
+                this.finishRoom('Call declined.');
+                return;
+            }
+
+            if (nextStatus === 'missed') {
+                this.finishRoom('Call was missed.');
+                return;
+            }
+
+            if (nextStatus === 'ended') {
+                this.finishRoom('Call ended.');
+            }
+        }).catch(() => {
+            // Keep listening through transient network hiccups.
+        }).finally(() => {
+            this.sessionRefreshRequest = null;
+        });
+
+        return this.sessionRefreshRequest;
     }
 
     startCallTimer()
@@ -864,14 +998,18 @@ class CallRoomApp
         };
 
         connection.ontrack = (event) => {
-            const stream = event.streams?.[0];
+            const stream = event.streams?.[0] || null;
+            const incomingTracks = stream?.getTracks?.() || (event.track ? [event.track] : []);
 
-            if (stream) {
-                tile.video.srcObject = stream;
-            } else if (event.track) {
-                remoteStream.addTrack(event.track);
-                tile.video.srcObject = remoteStream;
-            }
+            incomingTracks.forEach((track) => {
+                const alreadyAttached = remoteStream.getTracks().some((existingTrack) => existingTrack.id === track.id);
+
+                if (!alreadyAttached) {
+                    remoteStream.addTrack(track);
+                }
+            });
+
+            tile.video.srcObject = remoteStream;
 
             tile.video.play?.().catch(() => {});
             this.attachSpeakerMonitor(peerId, tile.video.srcObject);
@@ -1402,6 +1540,12 @@ class CallRoomApp
         `;
 
         const video = element.querySelector('video');
+        video.autoplay = true;
+        video.playsInline = true;
+        video.muted = false;
+        video.addEventListener('loadedmetadata', () => {
+            video.play?.().catch(() => {});
+        });
         video.srcObject = stream;
 
         this.grid?.appendChild(element);
@@ -1520,6 +1664,7 @@ class CallRoomApp
         this.roomFinished = true;
         this.leaveSignalSent = true;
         this.stopRingCountdown();
+        this.stopSessionRefreshLoop();
         this.stopCallTimer();
         this.stopQualityMonitor();
         this.releaseWakeLock().catch(() => {});

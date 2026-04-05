@@ -27,6 +27,7 @@ var composerReplyTarget = null;
 var typingIndicatorTimer = null;
 var typingPingTimer = null;
 var typingIndicatorHideTimer = null;
+var activeTypingUsers = new Map();
 var knownGroupConversationKeys = new Set();
 var composerEmojiPicker = null;
 var composerEmojiPickerVisible = false;
@@ -119,6 +120,14 @@ const getActiveGroupId        = () => {
     const conversationKey = getConversationKey();
 
     return conversationKey.startsWith('group:') ? Number(conversationKey.split(':')[1] || 0) : 0;
+};
+
+window.messengerPresence = window.messengerPresence || {
+    ready: false,
+    activeUserIds: [],
+    isUserOnline() {
+        return false;
+    },
 };
 
 function buildConversationPayload(conversationKey = getConversationKey())
@@ -455,6 +464,25 @@ function isCurrentUser(userId)
 function countOnlineGroupMembers(memberIds = [])
 {
     return memberIds.filter((id) => !isCurrentUser(id) && activeUsersMap.has(Number(id))).length;
+}
+
+function syncPresenceGlobals()
+{
+    const onlineIds = Array.from(new Set(
+        activeUsersIds
+            .map((id) => Number(id))
+            .filter((id) => Number.isInteger(id) && id > 0 && !isCurrentUser(id))
+    ));
+
+    window.messengerPresence = {
+        ready: true,
+        activeUserIds: onlineIds,
+        isUserOnline(userId) {
+            const safeUserId = Number(userId || 0);
+
+            return safeUserId > 0 && !isCurrentUser(safeUserId) && onlineIds.includes(safeUserId);
+        },
+    };
 }
 
 function refreshGroupOnlineState()
@@ -901,16 +929,30 @@ function insertEmojiIntoComposer(emoji)
     focusComposer();
 }
 
-function showTypingIndicator(name = 'Someone')
+function renderTypingIndicator()
 {
     if (!typingIndicatorLabel.length) {
         return;
     }
 
-    window.clearTimeout(typingIndicatorHideTimer);
+    const typers = Array.from(activeTypingUsers.values());
+
+    if (!typers.length) {
+        typingIndicatorLabel.addClass('d-none').removeAttr('data-visible').empty();
+        return;
+    }
+
+    let label = `${typers[0].name} is typing`;
+
+    if (typers.length === 2) {
+        label = `${typers[0].name} and ${typers[1].name} are typing`;
+    } else if (typers.length > 2) {
+        label = `${typers[0].name}, ${typers[1].name} +${typers.length - 2} more are typing`;
+    }
+
     typingIndicatorLabel.html(`
         <span class="typing-indicator-bubble">
-            <span class="typing-indicator-label">${escapeHtml(name)}</span>
+            <span class="typing-indicator-label">${escapeHtml(label)}</span>
             <span class="typing-indicator-dots" aria-hidden="true">
                 <span></span>
                 <span></span>
@@ -918,17 +960,60 @@ function showTypingIndicator(name = 'Someone')
             </span>
         </span>
     `).removeClass('d-none').attr('data-visible', 'true');
-    typingIndicatorHideTimer = window.setTimeout(() => {
-        hideTypingIndicator();
-    }, 2600);
 }
 
-function hideTypingIndicator()
+function showTypingIndicator(name = 'Someone', userId = null)
 {
     if (!typingIndicatorLabel.length) {
         return;
     }
 
+    const safeUserId = Number(userId || 0);
+    const typingKey = safeUserId > 0 ? safeUserId : String(name || 'Someone');
+    const existingEntry = activeTypingUsers.get(typingKey);
+
+    if (existingEntry?.timer) {
+        window.clearTimeout(existingEntry.timer);
+    }
+
+    const timer = window.setTimeout(() => {
+        activeTypingUsers.delete(typingKey);
+        renderTypingIndicator();
+    }, 2600);
+
+    activeTypingUsers.set(typingKey, {
+        name: String(name || 'Someone'),
+        timer,
+    });
+    renderTypingIndicator();
+}
+
+function hideTypingIndicator(userId = null)
+{
+    if (!typingIndicatorLabel.length) {
+        return;
+    }
+
+    if (userId !== null && userId !== undefined) {
+        const safeUserId = Number(userId || 0);
+        const typingKey = safeUserId > 0 ? safeUserId : String(userId);
+        const entry = activeTypingUsers.get(typingKey);
+
+        if (entry?.timer) {
+            window.clearTimeout(entry.timer);
+        }
+
+        activeTypingUsers.delete(typingKey);
+        renderTypingIndicator();
+        return;
+    }
+
+    activeTypingUsers.forEach((entry) => {
+        if (entry?.timer) {
+            window.clearTimeout(entry.timer);
+        }
+    });
+    activeTypingUsers.clear();
     typingIndicatorLabel.addClass('d-none').removeAttr('data-visible').empty();
 }
 
@@ -2564,12 +2649,16 @@ function setHeaderConversationActions(type = 'user')
     const hasConversation = !!getConversationKey();
     const isDirect = type === 'user';
     const isSelfConversation = isDirect && Number(getMessengerId()) === Number(auth_id);
+    const directConversationId = isDirect ? Number(getMessengerId()) : 0;
+    const canCallDirectRecipient = !isDirect || isSelfConversation || activeUsersMap.has(directConversationId);
 
     $('.favourite').toggleClass('d-none', !hasConversation || !isDirect || isSelfConversation);
     $('.start-call').toggleClass('d-none', !hasConversation || isSelfConversation);
+    $('.start-call').toggleClass('is-disabled', hasConversation && isDirect && !isSelfConversation && !canCallDirectRecipient);
+    $('.start-call').attr('aria-disabled', hasConversation && isDirect && !isSelfConversation && !canCallDirectRecipient ? 'true' : 'false');
 
-    $('.start-call[data-call-type="audio"]').attr('title', type === 'group' ? 'Group audio call' : 'Audio call');
-    $('.start-call[data-call-type="video"]').attr('title', type === 'group' ? 'Group video call' : 'Video call');
+    $('.start-call[data-call-type="audio"]').attr('title', hasConversation && isDirect && !isSelfConversation && !canCallDirectRecipient ? 'This person is offline right now' : (type === 'group' ? 'Group audio call' : 'Audio call'));
+    $('.start-call[data-call-type="video"]').attr('title', hasConversation && isDirect && !isSelfConversation && !canCallDirectRecipient ? 'This person is offline right now' : (type === 'group' ? 'Group video call' : 'Video call'));
 }
 
 function renderConversationMembers(members = [])
@@ -3261,9 +3350,9 @@ window.Echo.private('message.' + auth_id)
         }
 
         if (event.typing) {
-            showTypingIndicator(event.from_name || 'Someone');
+            showTypingIndicator(event.from_name || 'Someone', event.from_id);
         } else {
-            hideTypingIndicator();
+            hideTypingIndicator(event.from_id);
         }
     })
     .listen('.message.seen', (event) => {
@@ -3288,18 +3377,24 @@ window.Echo.join('online')
             upsertActiveUser(user);
 
         });
+        syncPresenceGlobals();
+        setHeaderConversationActions(getConversationType());
 
 }).joining((user) => {
     //Adding new user to the active users array
     addNewUserId(user.id);
     userActive(user.id);
     upsertActiveUser(user);
+    syncPresenceGlobals();
+    setHeaderConversationActions(getConversationType());
 
 }).leaving((user) => {
     //Removing user from the active users array
     removeUserId(user.id);
     userInactive(user.id);
     removeActiveUser(user.id);
+    syncPresenceGlobals();
+    setHeaderConversationActions(getConversationType());
 
 });//End Method
 

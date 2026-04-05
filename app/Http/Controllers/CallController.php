@@ -20,6 +20,24 @@ class CallController extends Controller
 {
     protected const MAX_GROUP_CALL_PARTICIPANTS = 8;
 
+    public function show(CallSession $session): JsonResponse
+    {
+        $this->authorizeParticipant($session);
+
+        if ($this->shouldExpireRingingSession($session)) {
+            $session = $this->expireRingingSession($session);
+        }
+
+        $session = $session->fresh(['caller:id,name,avatar,user_name', 'callee:id,name,avatar,user_name', 'historyMessage']) ?? $session;
+        $historyMessage = $session->historyMessage;
+
+        return response()->json([
+            'session' => $this->formatSession($session),
+            'history_message' => $historyMessage ? $this->formatHistoryMessage($historyMessage) : null,
+            'history_message_html' => $historyMessage ? $this->renderHistoryMessageHtml($historyMessage) : null,
+        ]);
+    }
+
     public function store(Request $request): JsonResponse
     {
         $authId = $this->authUserId();

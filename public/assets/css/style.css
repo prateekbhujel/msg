@@ -901,6 +901,12 @@ body.dark-mode .wsus__user_list_search input {
     color: var(--colorWhite);
 }
 
+.wsus__chat_area_header .header_right a.call-action.is-disabled {
+    opacity: .42;
+    pointer-events: none;
+    box-shadow: none;
+}
+
 .wsus__chat_area_body {
     padding: 20px;
     flex: 1 1 auto;

@@ -146,6 +146,18 @@ it('allows the call room leave endpoint to end an active call', function () {
     expect($session->fresh()->status)->toBe('ended');
 });
 
+it('returns the latest session payload for an active participant', function () {
+    $caller = User::factory()->create();
+    $callee = User::factory()->create();
+    $session = makeCallSession($caller, $callee, ['status' => 'active', 'accepted_at' => now()]);
+
+    $this->actingAs($caller)
+        ->getJson(route('messenger.calls.show', ['session' => $session->uuid]))
+        ->assertOk()
+        ->assertJsonPath('session.uuid', $session->uuid)
+        ->assertJsonPath('session.status', 'active');
+});
+
 it('marks unanswered ringing calls as missed without adding fake duration', function () {
     Event::fake([CallSignal::class]);
 

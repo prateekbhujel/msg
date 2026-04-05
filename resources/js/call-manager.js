@@ -174,6 +174,15 @@ function getSelectedConversationId()
     return Number($('.messenger-list-item.active').first().data('userId') || $('.messenger-list-item.active').first().data('id') || 0);
 }
 
+function onlineUserIds()
+{
+    const knownIds = window.messengerPresence?.activeUserIds;
+
+    return Array.isArray(knownIds)
+        ? knownIds.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
+        : [];
+}
+
 class MessengerCallManager
 {
     constructor()
@@ -427,6 +436,38 @@ class MessengerCallManager
         return !['idle', 'external'].includes(this.role);
     }
 
+    isUserReachableForCall(userId)
+    {
+        const safeUserId = Number(userId || 0);
+
+        if (safeUserId < 1 || safeUserId === this.authId) {
+            return false;
+        }
+
+        if (!window.messengerPresence || window.messengerPresence.ready !== true) {
+            return true;
+        }
+
+        return onlineUserIds().includes(safeUserId);
+    }
+
+    onlineGroupMemberCount(groupId)
+    {
+        const safeGroupId = Number(groupId || 0);
+
+        if (safeGroupId < 1 || !window.messengerPresence || window.messengerPresence.ready !== true) {
+            return Number.POSITIVE_INFINITY;
+        }
+
+        const rawMemberIds = String($(`.group-card[data-group-id="${safeGroupId}"]`).first().data('memberIds') || '');
+        const memberIds = rawMemberIds
+            .split(',')
+            .map((id) => Number(id))
+            .filter((id) => Number.isInteger(id) && id > 0 && id !== this.authId);
+
+        return memberIds.filter((id) => onlineUserIds().includes(id)).length;
+    }
+
     async startOutgoingCall(callType, options = {})
     {
         const conversationKey = String(options.conversationKey || getConversationKey() || '').trim();
@@ -440,6 +481,16 @@ class MessengerCallManager
 
         if (!groupId && calleeId === this.authId) {
             notify('error', 'You cannot call yourself.');
+            return;
+        }
+
+        if (!groupId && calleeId > 0 && !this.isUserReachableForCall(calleeId)) {
+            notify('error', 'That person is offline right now. Wait for them to come online before calling.');
+            return;
+        }
+
+        if (groupId && this.onlineGroupMemberCount(groupId) < 1) {
+            notify('error', 'No one else in this group is online right now.');
             return;
         }
 

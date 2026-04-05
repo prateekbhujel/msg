@@ -1069,8 +1069,17 @@ class MessengerCallManager
 
     notifyAjaxError(error, fallbackMessage)
     {
-        const message = error?.responseJSON?.message || fallbackMessage;
-        notify('error', message);
+        let message = error?.responseJSON?.message || '';
+
+        if (!message && typeof error?.responseText === 'string' && error.responseText.trim().startsWith('{')) {
+            try {
+                message = JSON.parse(error.responseText).message || '';
+            } catch (parseError) {
+                message = '';
+            }
+        }
+
+        notify('error', message || fallbackMessage);
     }
 }
 

@@ -5,6 +5,7 @@ use App\Events\CallInvitation;
 use App\Events\CallSignal;
 use App\Events\CallUpgradeVideo;
 use App\Models\CallSession;
+use App\Models\ChatGroup;
 use App\Models\User;
 use Illuminate\Support\Facades\Event;
 
@@ -270,4 +271,102 @@ it('upgrades an active audio call to video', function () {
         return $event->session->uuid === $session->uuid
             && $event->fromUserId === $caller->id;
     });
+});
+
+it('rejects starting a direct call when the recipient is already on another active call', function () {
+    Event::fake([CallInvitation::class]);
+
+    $caller = User::factory()->create();
+    $busyUser = User::factory()->create();
+    $otherParticipant = User::factory()->create();
+
+    makeCallSession($busyUser, $otherParticipant, [
+        'status' => 'active',
+        'accepted_at' => now(),
+        'meta' => [
+            'conversation_key' => 'user:' . $otherParticipant->id,
+            'participant_ids' => [$busyUser->id, $otherParticipant->id],
+            'joined_participant_ids' => [$busyUser->id, $otherParticipant->id],
+        ],
+    ]);
+
+    $this->actingAs($caller)->postJson(route('messenger.calls.store'), [
+        'callee_id' => $busyUser->id,
+        'call_type' => 'video',
+        'conversation_key' => 'user:' . $busyUser->id,
+    ])->assertStatus(409)
+        ->assertJsonPath('message', $busyUser->name . ' is on another call right now.');
+
+    Event::assertNotDispatched(CallInvitation::class);
+});
+
+it('rejects starting another call when the caller is already busy elsewhere', function () {
+    Event::fake([CallInvitation::class]);
+
+    $caller = User::factory()->create();
+    $activePeer = User::factory()->create();
+    $newRecipient = User::factory()->create();
+
+    makeCallSession($caller, $activePeer, [
+        'status' => 'active',
+        'accepted_at' => now(),
+        'meta' => [
+            'conversation_key' => 'user:' . $activePeer->id,
+            'participant_ids' => [$caller->id, $activePeer->id],
+            'joined_participant_ids' => [$caller->id, $activePeer->id],
+        ],
+    ]);
+
+    $this->actingAs($caller)->postJson(route('messenger.calls.store'), [
+        'callee_id' => $newRecipient->id,
+        'call_type' => 'audio',
+        'conversation_key' => 'user:' . $newRecipient->id,
+    ])->assertStatus(409)
+        ->assertJsonPath('message', 'Finish your current call before starting another one.');
+
+    Event::assertNotDispatched(CallInvitation::class);
+});
+
+it('does not reuse a same-pair group session when attempting a fresh direct call', function () {
+    Event::fake([CallInvitation::class]);
+
+    $caller = User::factory()->create();
+    $callee = User::factory()->create();
+    $guest = User::factory()->create();
+
+    $group = ChatGroup::create([
+        'owner_id' => $caller->id,
+        'name' => 'Launch Crew',
+        'avatar' => 'default/avatar.png',
+    ]);
+
+    $group->members()->attach([
+        $caller->id => ['created_at' => now(), 'updated_at' => now()],
+        $callee->id => ['created_at' => now(), 'updated_at' => now()],
+        $guest->id => ['created_at' => now(), 'updated_at' => now()],
+    ]);
+
+    $groupSession = makeCallSession($caller, $callee, [
+        'status' => 'active',
+        'accepted_at' => now(),
+        'meta' => [
+            'is_group' => true,
+            'group_id' => $group->id,
+            'group_name' => $group->name,
+            'group_avatar' => $group->avatarPath(),
+            'group_member_count' => 3,
+            'conversation_key' => $group->conversationKey(),
+            'participant_ids' => [$caller->id, $callee->id, $guest->id],
+            'joined_participant_ids' => [$caller->id, $callee->id, $guest->id],
+        ],
+    ]);
+
+    $this->actingAs($caller)->postJson(route('messenger.calls.store'), [
+        'callee_id' => $callee->id,
+        'call_type' => 'video',
+        'conversation_key' => 'user:' . $callee->id,
+    ])->assertStatus(409)
+        ->assertJsonPath('message', 'Finish your current call before starting another one.');
+
+    Event::assertNotDispatched(CallInvitation::class);
 });

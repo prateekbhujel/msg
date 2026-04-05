@@ -100,6 +100,23 @@ it('normalizes emoji shortcuts and stores a lightweight language hint on send', 
     expect(data_get($message->meta, 'language'))->toBe('ne');
 });
 
+it('returns visible markup for a plain text message send', function () {
+    $sender = User::factory()->create();
+    $recipient = User::factory()->create();
+
+    $response = $this->actingAs($sender)->post(route('messenger.send-message'), [
+        'conversation_key' => 'user:' . $recipient->id,
+        'temporaryMsgId' => 'temp_text_1',
+        'message' => 'This should stay visible',
+    ]);
+
+    $response->assertOk()
+        ->assertJsonPath('tempID', 'temp_text_1')
+        ->assertJsonPath('message_id', Message::query()->latest('id')->value('id'));
+
+    expect($response->json('message'))->toContain('This should stay visible');
+});
+
 it('broadcasts typing indicators using the recipient conversation key for direct chats', function () {
     Event::fake([TypingIndicatorUpdated::class]);
 

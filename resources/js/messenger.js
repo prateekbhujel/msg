@@ -1294,6 +1294,63 @@ function renderCallHistoryCardMarkup(messageLike = {})
     `;
 }
 
+function normalizeServerMessageMarkup(serverMarkup, composerSnapshot = {})
+{
+    const safeMarkup = String(serverMarkup || '').trim();
+
+    if (!safeMarkup.length) {
+        return '';
+    }
+
+    const parsedNodes = $.parseHTML(safeMarkup, document, true) || [];
+    const wrapper = $('<div></div>').append(parsedNodes);
+    const messageCard = wrapper.find('.message-card').first();
+
+    if (!messageCard.length) {
+        return safeMarkup;
+    }
+
+    const snapshotText = String(composerSnapshot?.text || '').trim();
+    const hasSnapshotMedia = !!composerSnapshot?.hasAttachment || !!composerSnapshot?.hasVoiceMessage;
+    const hasRenderedText = messageCard.find('.messages').filter(function () {
+        return $(this).text().trim().length > 0;
+    }).length > 0;
+    const isCallMessage = String(messageCard.data('messageType') || '') === 'call';
+
+    if (!hasRenderedText && snapshotText && !hasSnapshotMedia && !isCallMessage) {
+        const textNode = $('<p class="messages"></p>').text(snapshotText);
+        const insertionTarget = messageCard.find('.message-reactions, .message-actions-stack, .time').first();
+
+        if (insertionTarget.length) {
+            insertionTarget.before(textNode);
+        } else {
+            messageCard.find('.wsus__single_chat').first().append(textNode);
+        }
+    }
+
+    return wrapper.html();
+}
+
+function buildCommittedTempMessageMarkup(tempMessageElement, composerSnapshot = {}, messageId = null)
+{
+    const tempCard = $(tempMessageElement).clone();
+    const text = String(composerSnapshot?.text || '').trim();
+    const chatBubble = tempCard.find('.wsus__single_chat').first();
+
+    tempCard.attr('data-id', messageId || tempCard.data('id') || '');
+    chatBubble.find('.pre_loader, .clock, .message-temp-chips').remove();
+
+    if (text && !chatBubble.find('.messages').length) {
+        chatBubble.append($('<p class="messages"></p>').text(text));
+    }
+
+    if (!chatBubble.find('.time').length) {
+        chatBubble.append('<span class="time message-time--outgoing">Just now</span>');
+    }
+
+    return $('<div></div>').append(tempCard).html();
+}
+
 function renderVoicePlayerMarkup({
     source,
     mime = 'audio/webm',
@@ -2117,9 +2174,9 @@ async function sendMessage()
         return;
     }
 
-    const inputValue = maybeApplyComposerEmojiShortcuts();
-    const attachmentFiles = Array.from(attachmentInput[0]?.files || []);
-    const hasAttachment = attachmentFiles.length > 0;
+    let inputValue = maybeApplyComposerEmojiShortcuts();
+    let attachmentFiles = Array.from(attachmentInput[0]?.files || []);
+    let hasAttachment = attachmentFiles.length > 0;
     const hasVoiceCandidate = !!voiceRecordingBlob || voiceRecordingActive;
     const conversationKey = getConversationKey();
     const directUserId = getMessengerId();
@@ -2140,12 +2197,21 @@ async function sendMessage()
             await stopVoiceRecording();
         }
 
+        inputValue = maybeApplyComposerEmojiShortcuts();
+        attachmentFiles = Array.from(attachmentInput[0]?.files || []);
+        hasAttachment = attachmentFiles.length > 0;
         const hasVoiceMessage = !!voiceRecordingBlob;
         const composerSnapshot = {
             text: inputValue,
             hasAttachment,
             hasVoiceMessage,
         };
+
+        if (inputValue.trim().length <= 0 && !hasAttachment && !hasVoiceMessage) {
+            setComposerSendingState(false);
+            messageSending = false;
+            return;
+        }
 
         temporaryMsgId += 1;
         let tempID = `temp_${temporaryMsgId}`; //temp_1, temp_2 ....
@@ -2203,12 +2269,17 @@ async function sendMessage()
                 //Update conatcts lists...
                 updateContactItem(getConversationKey());
                 const tempMsgCardElement = messageBoxContainer.find(`.message-card[data-id="${data.tempID}"]`);
+                const serverMarkup = normalizeServerMessageMarkup(data.message, composerSnapshot);
+                const fallbackMarkup = tempMsgCardElement.length
+                    ? buildCommittedTempMessageMarkup(tempMsgCardElement, composerSnapshot, data.message_id)
+                    : '';
+                const finalMarkup = serverMarkup || fallbackMarkup;
 
-                if (tempMsgCardElement.length) {
-                    tempMsgCardElement.before(data.message);
+                if (tempMsgCardElement.length && finalMarkup) {
+                    tempMsgCardElement.before(finalMarkup);
                     tempMsgCardElement.remove();
-                } else {
-                    messageBoxContainer.append(data.message);
+                } else if (finalMarkup) {
+                    messageBoxContainer.append(finalMarkup);
                 }
                 initVenobox();
                 initializeVoicePlayers(messageBoxContainer[0]);

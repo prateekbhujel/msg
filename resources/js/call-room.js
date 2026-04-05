@@ -223,14 +223,56 @@ class CallRoomApp
 
     decorateSessionPayload(sessionPayload)
     {
-        const participantList = Array.isArray(sessionPayload?.participants) ? sessionPayload.participants : [];
-        const joinedSet = new Set((sessionPayload?.joined_participant_ids || []).map((id) => sanitizeId(id)).filter(Boolean));
+        const participantIds = Array.from(new Set(
+            (Array.isArray(sessionPayload?.participant_ids) ? sessionPayload.participant_ids : [])
+                .map((id) => sanitizeId(id))
+                .filter(Boolean)
+        ));
+        const joinedIds = Array.from(new Set(
+            (Array.isArray(sessionPayload?.joined_participant_ids) ? sessionPayload.joined_participant_ids : [])
+                .map((id) => sanitizeId(id))
+                .filter(Boolean)
+        ));
+        const participantsById = new Map();
+        const seedParticipant = (participant = {}) => {
+            const id = sanitizeId(participant.id);
 
-        sessionPayload.participants = participantList.map((participant) => ({
-            ...participant,
-            id: sanitizeId(participant.id),
-            joined: joinedSet.has(sanitizeId(participant.id)) || !!participant.joined,
-        }));
+            if (!id || participantsById.has(id)) {
+                return;
+            }
+
+            participantsById.set(id, {
+                ...participant,
+                id,
+            });
+        };
+
+        (Array.isArray(sessionPayload?.participants) ? sessionPayload.participants : []).forEach(seedParticipant);
+        seedParticipant(sessionPayload?.caller || {});
+        seedParticipant(sessionPayload?.callee || {});
+
+        const allowedParticipantIds = sessionPayload?.is_group
+            ? participantIds
+            : Array.from(new Set([
+                sanitizeId(sessionPayload?.caller?.id),
+                sanitizeId(sessionPayload?.callee?.id),
+            ].filter(Boolean)));
+        const normalizedParticipantIds = allowedParticipantIds.length > 0
+            ? allowedParticipantIds
+            : Array.from(participantsById.keys());
+        const normalizedJoinedIds = joinedIds.filter((id) => normalizedParticipantIds.includes(id));
+
+        sessionPayload.participant_ids = normalizedParticipantIds;
+        sessionPayload.joined_participant_ids = normalizedJoinedIds;
+        sessionPayload.participants = normalizedParticipantIds.map((participantId) => {
+            const participant = participantsById.get(participantId) || {};
+
+            return {
+                ...participant,
+                id: participantId,
+                joined: normalizedJoinedIds.includes(participantId) || !!participant.joined,
+            };
+        });
     }
 
     isMobile()
@@ -266,14 +308,18 @@ class CallRoomApp
 
     joinedParticipantIds()
     {
-        return (this.session?.joined_participant_ids || [])
-            .map((id) => sanitizeId(id))
-            .filter((id) => id > 0);
+        return Array.from(new Set(
+            (this.session?.joined_participant_ids || [])
+                .map((id) => sanitizeId(id))
+                .filter((id) => id > 0)
+        ));
     }
 
     activePeerIds()
     {
-        return this.joinedParticipantIds().filter((id) => id !== this.authId);
+        return Array.from(new Set(
+            this.joinedParticipantIds().filter((id) => id !== this.authId)
+        ));
     }
 
     bindControls()
@@ -769,7 +815,7 @@ class CallRoomApp
 
     async syncPeerRoster()
     {
-        const targetPeerIds = this.activePeerIds();
+        const targetPeerIds = Array.from(new Set(this.activePeerIds()));
 
         await Promise.all(targetPeerIds.map(async (peerId) => {
             const peer = this.ensurePeerConnection(peerId);
@@ -1323,6 +1369,21 @@ class CallRoomApp
 
     createRemoteTile(peerId, stream)
     {
+        const existingElement = this.grid?.querySelector(`[data-peer-id="${peerId}"]`);
+
+        if (existingElement) {
+            const existingVideo = existingElement.querySelector('video');
+
+            if (existingVideo) {
+                existingVideo.srcObject = stream;
+            }
+
+            return {
+                element: existingElement,
+                video: existingVideo,
+            };
+        }
+
         const participant = (this.session?.participants || []).find((item) => sanitizeId(item.id) === peerId) || {};
         const element = document.createElement('article');
         element.className = 'call-room__tile';

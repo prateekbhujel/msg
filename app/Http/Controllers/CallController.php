@@ -37,39 +37,20 @@ class CallController extends Controller
 
         if ($isGroupCall) {
             $conversationKey = $group->conversationKey();
+        } elseif ($conversationKey === '' && ! empty($data['callee_id'])) {
+            $conversationKey = 'user:' . (int) $data['callee_id'];
         }
 
         if (! $isGroupCall) {
             abort_if((int) $data['callee_id'] === $authId, 422, 'You cannot call yourself.');
         }
 
-        $existingSession = $isGroupCall
-            ? CallSession::query()
-                ->whereIn('status', ['ringing', 'active'])
-                ->where('meta->conversation_key', $conversationKey)
-                ->latest('id')
-                ->first()
-            : CallSession::query()
-                ->whereIn('status', ['ringing', 'active'])
-                ->where(function ($query) use ($data) {
-                    $query->where(function ($query) use ($data) {
-                        $query->where('caller_id', $this->authUserId())
-                            ->where('callee_id', $data['callee_id']);
-                    })->orWhere(function ($query) use ($data) {
-                        $query->where('caller_id', $data['callee_id'])
-                            ->where('callee_id', $this->authUserId());
-                    });
-                })
-                ->latest('id')
-                ->first();
-
-        if ($existingSession && $this->shouldExpireRingingSession($existingSession)) {
-            $existingSession = $this->expireRingingSession($existingSession);
-        }
-
-        if ($existingSession && ! in_array($existingSession->status, ['ringing', 'active'], true)) {
-            $existingSession = null;
-        }
+        $existingSession = $this->findReusableSession(
+            $isGroupCall,
+            $conversationKey,
+            $authId,
+            (int) ($data['callee_id'] ?? 0)
+        );
 
         if ($existingSession) {
             $historyMessage = $this->ensureHistoryMessage($existingSession, 'ringing');
@@ -81,8 +62,26 @@ class CallController extends Controller
             ]);
         }
 
+        $callerBusySession = $this->findBusySessionForUser(
+            $authId,
+            $existingSession ? [$existingSession->uuid] : []
+        );
+
+        if ($callerBusySession) {
+            return response()->json([
+                'message' => 'Finish your current call before starting another one.',
+            ], 409);
+        }
+
         if ($isGroupCall) {
-            $participantIds = $this->groupParticipantIds($group, $authId);
+            $requestedParticipantIds = $this->groupParticipantIds($group, $authId);
+            $participantIds = collect($requestedParticipantIds)
+                ->reject(function ($participantId) use ($authId) {
+                    return (int) $participantId !== $authId
+                        && $this->findBusySessionForUser((int) $participantId) instanceof CallSession;
+                })
+                ->values()
+                ->all();
             $primaryInviteeId = collect($participantIds)
                 ->first(fn ($id) => (int) $id !== $authId);
 
@@ -112,6 +111,14 @@ class CallController extends Controller
                 'history_message' => $this->formatHistoryMessage($historyMessage),
                 'history_message_html' => $this->renderHistoryMessageHtml($historyMessage),
             ], 201);
+        }
+
+        $calleeBusySession = $this->findBusySessionForUser((int) $data['callee_id']);
+
+        if ($calleeBusySession) {
+            return response()->json([
+                'message' => $this->busyMessageForUser((int) $data['callee_id']),
+            ], 409);
         }
 
         $session = CallSession::create([
@@ -464,12 +471,13 @@ class CallController extends Controller
 
         $invitedUserIds = $requestedUserIds
             ->reject(fn ($id) => in_array($id, $existingParticipantIds, true))
+            ->reject(fn ($id) => $this->findBusySessionForUser((int) $id, [$session->uuid]) instanceof CallSession)
             ->take($availableSlots)
             ->values();
 
         if ($invitedUserIds->isEmpty()) {
             throw ValidationException::withMessages([
-                'user_ids' => 'Choose someone who is not already in the call.',
+                'user_ids' => 'Choose someone who is available and not already in the call.',
             ]);
         }
 
@@ -831,5 +839,83 @@ class CallController extends Controller
         ]);
 
         return true;
+    }
+
+    protected function findReusableSession(bool $isGroupCall, string $conversationKey, int $authId, int $calleeId = 0): ?CallSession
+    {
+        $session = $isGroupCall
+            ? CallSession::query()
+                ->whereIn('status', ['ringing', 'active'])
+                ->where('meta->conversation_key', $conversationKey)
+                ->latest('id')
+                ->first()
+            : CallSession::query()
+                ->whereIn('status', ['ringing', 'active'])
+                ->where('meta->conversation_key', $conversationKey)
+                ->where(function ($query) use ($authId, $calleeId) {
+                    $query->where(function ($nested) use ($authId, $calleeId) {
+                        $nested->where('caller_id', $authId)
+                            ->where('callee_id', $calleeId);
+                    })->orWhere(function ($nested) use ($authId, $calleeId) {
+                        $nested->where('caller_id', $calleeId)
+                            ->where('callee_id', $authId);
+                    });
+                })
+                ->latest('id')
+                ->first();
+
+        return $this->resolveActiveSession($session);
+    }
+
+    protected function findBusySessionForUser(int $userId, array $excludedSessionUuids = []): ?CallSession
+    {
+        $sessions = CallSession::query()
+            ->whereIn('status', ['ringing', 'active'])
+            ->when(! empty($excludedSessionUuids), function ($query) use ($excludedSessionUuids) {
+                $query->whereNotIn('uuid', $excludedSessionUuids);
+            })
+            ->where(function ($query) use ($userId) {
+                $query->where('caller_id', $userId)
+                    ->orWhere('callee_id', $userId)
+                    ->orWhereJsonContains('meta->participant_ids', $userId)
+                    ->orWhereJsonContains('meta->joined_participant_ids', $userId);
+            })
+            ->latest('id')
+            ->get();
+
+        foreach ($sessions as $session) {
+            $activeSession = $this->resolveActiveSession($session);
+
+            if ($activeSession) {
+                return $activeSession;
+            }
+        }
+
+        return null;
+    }
+
+    protected function resolveActiveSession(?CallSession $session): ?CallSession
+    {
+        if (! $session) {
+            return null;
+        }
+
+        if ($this->shouldExpireRingingSession($session)) {
+            $session = $this->expireRingingSession($session);
+        }
+
+        if (! in_array($session->status, ['ringing', 'active'], true)) {
+            return null;
+        }
+
+        return $session;
+    }
+
+    protected function busyMessageForUser(int $userId): string
+    {
+        $user = User::query()->find($userId, ['id', 'name', 'user_name']);
+        $name = $user?->name ?: $user?->user_name ?: 'That person';
+
+        return "{$name} is on another call right now.";
     }
 }

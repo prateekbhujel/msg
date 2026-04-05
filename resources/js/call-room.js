@@ -201,6 +201,7 @@ class CallRoomApp
         this.sessionRefreshTimer = null;
         this.sessionRefreshRequest = null;
         this.initialized = false;
+        this.mediaUnlockPromptVisible = false;
     }
 
     init()
@@ -347,9 +348,16 @@ class CallRoomApp
         return Array.from(this.peers.values()).filter((peer) => {
             const connectionState = String(peer.connection?.connectionState || '');
             const iceConnectionState = String(peer.connection?.iceConnectionState || '');
+            const videoElement = peer.tile?.video || null;
+            const mediaPlaying = !!videoElement
+                && !videoElement.paused
+                && !videoElement.ended
+                && videoElement.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
 
-            return ['connected'].includes(connectionState)
-                || ['connected', 'completed'].includes(iceConnectionState);
+            return (
+                ['connected'].includes(connectionState)
+                || ['connected', 'completed'].includes(iceConnectionState)
+            ) && mediaPlaying;
         }).length;
     }
 
@@ -657,6 +665,12 @@ class CallRoomApp
             await this.syncPeerRoster();
             this.renderSessionSummary();
             this.showControlsTemporarily();
+            window.addEventListener('pointerdown', () => {
+                this.resumeRemoteMediaPlayback().catch(() => {});
+            }, { once: true });
+            window.setTimeout(() => {
+                this.resumeRemoteMediaPlayback().catch(() => {});
+            }, 350);
             document.body.classList.add('call-room-active');
         })().finally(() => {
             this.connectionBootstrapPromise = null;
@@ -1066,14 +1080,26 @@ class CallRoomApp
 
             const connectionState = String(peer.connection?.connectionState || '');
             const iceConnectionState = String(peer.connection?.iceConnectionState || '');
-            const shouldRetryOffer = sanitizeId(this.authId) < sanitizeId(peerId)
+            const mediaTracksReady = (peer.remoteStream?.getTracks?.().length || 0) > 0;
+            const shouldRetryOffer = (
+                sanitizeId(this.authId) < sanitizeId(peerId)
                 && !peer.negotiating
                 && peer.connection.signalingState === 'stable'
                 && !['connected'].includes(connectionState)
-                && !['connected', 'completed'].includes(iceConnectionState);
+                && !['connected', 'completed'].includes(iceConnectionState)
+            ) || (
+                ['connected', 'completed'].includes(connectionState)
+                && !mediaTracksReady
+                && Date.now() - (peer.lastNegotiationAt || 0) > 1800
+            );
 
             if (shouldRetryOffer) {
                 await this.negotiateWithPeer(peerId);
+                return;
+            }
+
+            if (mediaTracksReady && peer.playbackBlocked) {
+                this.showMediaUnlockPrompt();
             }
         }));
 
@@ -1100,6 +1126,8 @@ class CallRoomApp
             tile,
             negotiating: false,
             dataChannel: null,
+            playbackBlocked: false,
+            lastNegotiationAt: 0,
         };
 
         connection.ontrack = (event) => {
@@ -1116,7 +1144,18 @@ class CallRoomApp
 
             tile.video.srcObject = remoteStream;
 
-            tile.video.play?.().catch(() => {});
+            const playbackPromise = tile.video.play?.();
+
+            if (playbackPromise && typeof playbackPromise.then === 'function') {
+                playbackPromise.then(() => {
+                    peer.playbackBlocked = false;
+                    this.hideMediaUnlockPromptIfReady();
+                }).catch(() => {
+                    peer.playbackBlocked = true;
+                    this.showMediaUnlockPrompt();
+                });
+            }
+
             this.attachSpeakerMonitor(peerId, tile.video.srcObject);
             this.renderEmptyState();
         };
@@ -1201,6 +1240,7 @@ class CallRoomApp
         }
 
         peer.negotiating = true;
+        peer.lastNegotiationAt = Date.now();
 
         try {
             const offer = await peer.connection.createOffer();
@@ -1235,6 +1275,7 @@ class CallRoomApp
                 session_uuid: this.session.uuid,
             });
             await this.enterConnectedState();
+            await this.ensurePeerConnectivity();
             break;
         case 'declined':
             this.finishRoom('Call declined.');
@@ -1691,7 +1732,36 @@ class CallRoomApp
         video.playsInline = true;
         video.muted = false;
         video.addEventListener('loadedmetadata', () => {
-            video.play?.().catch(() => {});
+            const playPromise = video.play?.();
+
+            if (playPromise && typeof playPromise.then === 'function') {
+                playPromise.then(() => {
+                    const peer = this.peers.get(peerId);
+
+                    if (peer) {
+                        peer.playbackBlocked = false;
+                    }
+
+                    this.hideMediaUnlockPromptIfReady();
+                }).catch(() => {
+                    const peer = this.peers.get(peerId);
+
+                    if (peer) {
+                        peer.playbackBlocked = true;
+                    }
+
+                    this.showMediaUnlockPrompt();
+                });
+            }
+        });
+        video.addEventListener('playing', () => {
+            const peer = this.peers.get(peerId);
+
+            if (peer) {
+                peer.playbackBlocked = false;
+            }
+
+            this.hideMediaUnlockPromptIfReady();
         });
         video.srcObject = stream;
         element.querySelector('.call-room__tile-fullscreen')?.addEventListener('click', (event) => {
@@ -1727,11 +1797,49 @@ class CallRoomApp
         this.emptyState.classList.toggle('is-hidden', hasRemoteTiles);
     }
 
-    resumeRemoteMediaPlayback()
+    async resumeRemoteMediaPlayback()
     {
-        this.grid?.querySelectorAll('video').forEach((videoElement) => {
-            videoElement.play?.().catch(() => {});
-        });
+        const playResults = await Promise.all(this.grid?.querySelectorAll('video')?.length
+            ? Array.from(this.grid.querySelectorAll('video')).map(async (videoElement) => {
+                try {
+                    await videoElement.play?.();
+                    return true;
+                } catch (error) {
+                    return false;
+                }
+            })
+            : []);
+
+        if (playResults.some(Boolean)) {
+            this.peers.forEach((peer) => {
+                peer.playbackBlocked = false;
+            });
+            this.hideMediaUnlockPromptIfReady();
+        }
+    }
+
+    showMediaUnlockPrompt(message = 'Tap the screen to start audio and video')
+    {
+        this.mediaUnlockPromptVisible = true;
+
+        if (this.overlayCopy) {
+            this.overlayCopy.textContent = message;
+        }
+
+        this.setOverlayVisible(true);
+    }
+
+    hideMediaUnlockPromptIfReady()
+    {
+        const hasBlockedPeer = Array.from(this.peers.values()).some((peer) => peer.playbackBlocked);
+
+        if (!hasBlockedPeer) {
+            this.mediaUnlockPromptVisible = false;
+
+            if (this.session?.status === 'active') {
+                this.setOverlayVisible(false);
+            }
+        }
     }
 
     attachSpeakerMonitor(peerId, stream)

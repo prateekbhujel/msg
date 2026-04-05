@@ -23,6 +23,15 @@ import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
 window.Pusher = Pusher;
 
+function resolveAssetBaseUrl()
+{
+    const assetMeta = document.querySelector('meta[name="asset-url"]')?.getAttribute('content') || `${window.location.origin}/`;
+
+    return new URL(assetMeta, window.location.origin);
+}
+
+const messengerAssetBaseUrl = resolveAssetBaseUrl();
+
 window.Echo = new Echo({
     broadcaster: 'pusher',
     key: import.meta.env.VITE_PUSHER_APP_KEY,
@@ -32,15 +41,8 @@ window.Echo = new Echo({
     wssPort: import.meta.env.VITE_PUSHER_PORT ?? 443,
     forceTLS: (import.meta.env.VITE_PUSHER_SCHEME ?? 'https') === 'https',
     enabledTransports: ['ws', 'wss'],
-    authEndpoint: `broadcasting/auth`, // Ensure auth endpoint points to the correct URL
+    authEndpoint: new URL('broadcasting/auth', messengerAssetBaseUrl).toString(),
 });
-
-function resolveAssetBaseUrl()
-{
-    const assetMeta = document.querySelector('meta[name="asset-url"]')?.getAttribute('content') || `${window.location.origin}/`;
-
-    return new URL(assetMeta, window.location.origin);
-}
 
 async function registerMessengerServiceWorker()
 {

@@ -138,7 +138,7 @@
 
     .wsus__chat_area_footer form {
         padding: 10px 12px;
-        grid-template-columns: auto minmax(0, 1fr) auto;
+        grid-template-columns: 114px minmax(0, 1fr) 68px;
         gap: 10px;
     }
 
@@ -268,7 +268,7 @@
 
     .wsus__chat_area_footer form {
         padding: 10px 12px;
-        grid-template-columns: auto minmax(0, 1fr) auto;
+        grid-template-columns: 108px minmax(0, 1fr) 64px;
         gap: 10px;
     }
 
@@ -398,7 +398,7 @@
 
     .wsus__chat_area_footer form {
         padding: 10px 12px;
-        grid-template-columns: auto minmax(0, 1fr) auto;
+        grid-template-columns: 104px minmax(0, 1fr) 60px;
         gap: 10px;
     }
 

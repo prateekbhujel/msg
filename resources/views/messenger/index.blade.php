@@ -91,25 +91,32 @@
                         </div>
                     </div>
                     <form class="message-form" enctype="multipart/form-data">
-                        <div class="composer-actions">
-                            <div class="file">
-                                <label for="file" aria-label="Attach files" title="Attach files"><i class="far fa-plus"></i></label>
-                                <input id="file" class="attachment-input" name="attachments[]" type="file" hidden multiple accept="image/*,audio/*,video/*,.pdf,.txt,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.json,.md,.zip,.rar,.7z">
-                            </div>
-                            <div class="composer-voice-control">
-                                <button type="button" class="voice-record-toggle" title="Record voice note" aria-label="Record voice note" aria-pressed="false">
-                                    <i class="fas fa-microphone"></i>
+                        <div class="composer-leading">
+                            <div class="composer-actions">
+                                <div class="file">
+                                    <label for="file" aria-label="Attach files" title="Attach files"><i class="far fa-plus"></i></label>
+                                    <input id="file" class="attachment-input" name="attachments[]" type="file" hidden multiple accept="image/*,audio/*,video/*,.pdf,.txt,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.json,.md,.zip,.rar,.7z">
+                                </div>
+                                <div class="composer-voice-control">
+                                    <button type="button" class="voice-record-toggle" title="Record voice note" aria-label="Record voice note" aria-pressed="false">
+                                        <i class="fas fa-microphone"></i>
+                                    </button>
+                                </div>
+                                <button type="button" class="composer-emoji-trigger" title="Emoji" aria-label="Open emoji picker">
+                                    <i class="far fa-smile"></i>
                                 </button>
                             </div>
-                            <button type="button" class="composer-emoji-trigger" title="Emoji" aria-label="Open emoji picker">
-                                <i class="far fa-smile"></i>
-                            </button>
                         </div>
-                        <textarea class="message-input" id="example1" rows="1" placeholder="Type a message.." name="message"></textarea>
-                        <span id="tone-dot" data-tone=""></span>
-                        <button type="submit" class="message-send-button" aria-label="Send message"><i class="fas fa-paper-plane"></i></button>
+                        <div class="composer-input-shell">
+                            <textarea class="message-input" id="example1" rows="1" placeholder="Type a message.." name="message"></textarea>
+                        </div>
+                        <div class="composer-trailing">
+                            <span id="tone-dot" data-tone=""></span>
+                            <button type="submit" class="message-send-button" aria-label="Send message"><i class="fas fa-paper-plane"></i></button>
+                        </div>
                     </form>
                     <div class="composer-emoji-popover d-none" data-composer-emoji-popover></div>
+                    <div class="composer-drop-hint" aria-hidden="true">Drop files to attach</div>
                     <div class="voice-preview d-none"></div>
                 </div>
             </div>

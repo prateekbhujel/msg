@@ -34,10 +34,15 @@ var activeUsersMap = new Map();
 
 const VOICE_RECORDING_MAX_SECONDS = 120;
 const REACTION_OPTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
-const CHAT_THEME_STORAGE_KEY = 'messenger.theme.primary';
-const CHAT_THEME_LIGHT_STORAGE_KEY = 'messenger.theme.light';
-const CHAT_THEME_RGB_STORAGE_KEY = 'messenger.theme.rgb';
+const DEFAULT_CHAT_THEME = {
+    primary: '#2180f3',
+    light: '#ecf5ff',
+};
+const CHAT_THEME_MAP_STORAGE_KEY = 'messenger.theme.map';
 const LAST_CONVERSATION_STORAGE_KEY = 'msg_last_conversation';
+const MESSENGER_TAB_STORAGE_KEY = 'messenger.ui.tab';
+const MESSENGER_INFO_STORAGE_KEY = 'messenger.ui.info_open';
+const MESSENGER_DARKMODE_STORAGE_KEY = 'messenger.ui.darkmode';
 const COMPOSER_EMOJI_SHORTCUTS = [
     { pattern: /(^|\s):\)(?=\s|$)/g, replacement: '$1😊' },
     { pattern: /(^|\s):\((?=\s|$)/g, replacement: '$1😢' },
@@ -66,6 +71,7 @@ const messageForm             = $(".message-form"),
       messengerContactBox     = $(".messenger-contacts"),
       messengerGroupBox       = $(".messenger-groups"),
       messengerActiveBox      = $(".messenger-active-users"),
+      messengerApp            = $(".wsus__chat_app"),
       composerShell           = $(".footer_message"),
       attachmentInput         = $(".attachment-input"),
       attachmentPreviewBlock  = $(".attachment-block"),
@@ -90,6 +96,7 @@ const messageForm             = $(".message-form"),
       conversationSearchResults = $(".conversation-search-results"),
       conversationDisappearOptions = $(".conversation-disappear-option"),
       themeSwatches           = $("[data-chat-theme-color]"),
+      darkModeToggle          = $("[data-darkmode-toggle]"),
       messengerTabButtons     = $(".msg-tab"),
       messengerTabPanes       = $(".msg-tab-pane"),
       groupsUnreadBadge       = $("#groups-unread-badge"),
@@ -191,10 +198,46 @@ function hexToRgbString(hexColor)
 
 function setDocumentThemeColor(color)
 {
-    $('meta[name=theme-color]').attr('content', color || '#2180f3');
+    const fallbackColor = $('body').hasClass('dark-mode') ? '#0f172a' : DEFAULT_CHAT_THEME.primary;
+
+    $('meta[name=theme-color]').attr('content', color || fallbackColor);
 }
 
-function applyChatTheme(primaryColor = '#2180f3', lightColor = '#ecf5ff')
+function readThemeMap()
+{
+    try {
+        const parsed = JSON.parse(window.localStorage.getItem(CHAT_THEME_MAP_STORAGE_KEY) || '{}');
+
+        return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (error) {
+        return {};
+    }
+}
+
+function writeThemeMap(themeMap = {})
+{
+    try {
+        window.localStorage.setItem(CHAT_THEME_MAP_STORAGE_KEY, JSON.stringify(themeMap));
+    } catch (error) {
+        // Ignore storage failures and still apply the theme in-memory.
+    }
+}
+
+function themeForConversation(conversationKey = '')
+{
+    const safeConversationKey = String(conversationKey || '').trim();
+    const themeMap = readThemeMap();
+    const storedTheme = safeConversationKey ? themeMap[safeConversationKey] : null;
+    const primaryColor = String(storedTheme?.primary || DEFAULT_CHAT_THEME.primary);
+    const lightColor = String(storedTheme?.light || DEFAULT_CHAT_THEME.light);
+
+    return {
+        primary: primaryColor,
+        light: lightColor,
+    };
+}
+
+function applyChatTheme(primaryColor = DEFAULT_CHAT_THEME.primary, lightColor = DEFAULT_CHAT_THEME.light)
 {
     const rgbValue = hexToRgbString(primaryColor) || '33, 128, 243';
 
@@ -207,29 +250,61 @@ function applyChatTheme(primaryColor = '#2180f3', lightColor = '#ecf5ff')
     themeSwatches.filter(`[data-chat-theme-color="${primaryColor}"]`).addClass('is-active');
 }
 
-function loadStoredChatTheme()
+function applyThemeForConversation(conversationKey = '')
 {
-    try {
-        const primaryColor = window.localStorage.getItem(CHAT_THEME_STORAGE_KEY) || '#2180f3';
-        const lightColor = window.localStorage.getItem(CHAT_THEME_LIGHT_STORAGE_KEY) || '#ecf5ff';
-
-        applyChatTheme(primaryColor, lightColor);
-    } catch (error) {
-        applyChatTheme();
-    }
+    const theme = themeForConversation(conversationKey);
+    applyChatTheme(theme.primary, theme.light);
 }
 
-function saveChatTheme(primaryColor, lightColor)
+function loadStoredChatTheme()
 {
-    try {
-        window.localStorage.setItem(CHAT_THEME_STORAGE_KEY, primaryColor);
-        window.localStorage.setItem(CHAT_THEME_LIGHT_STORAGE_KEY, lightColor);
-        window.localStorage.setItem(CHAT_THEME_RGB_STORAGE_KEY, hexToRgbString(primaryColor) || '33, 128, 243');
-    } catch (error) {
-        // Ignore storage failures and still apply the theme in-memory.
+    applyThemeForConversation(getConversationKey());
+}
+
+function saveChatTheme(primaryColor, lightColor, conversationKey = getConversationKey())
+{
+    const safeConversationKey = String(conversationKey || '').trim();
+
+    if (safeConversationKey) {
+        const themeMap = readThemeMap();
+        themeMap[safeConversationKey] = {
+            primary: primaryColor,
+            light: lightColor,
+        };
+        writeThemeMap(themeMap);
     }
 
     applyChatTheme(primaryColor, lightColor);
+}
+
+function setDarkMode(enabled = false)
+{
+    $('body').toggleClass('dark-mode', !!enabled);
+    darkModeToggle.toggleClass('is-active', !!enabled);
+    darkModeToggle.attr('aria-pressed', enabled ? 'true' : 'false');
+    darkModeToggle.find('span').text(enabled ? 'Light Mode' : 'Dark Mode');
+    darkModeToggle.find('i')
+        .toggleClass('fa-moon', !enabled)
+        .toggleClass('fa-sun', enabled);
+
+    try {
+        window.localStorage.setItem(MESSENGER_DARKMODE_STORAGE_KEY, enabled ? '1' : '0');
+    } catch (error) {
+        // Ignore storage failures and keep the state in-memory.
+    }
+
+    composerEmojiPicker = null;
+    composerEmojiPopover.empty();
+    setDocumentThemeColor(String(document.documentElement.style.getPropertyValue('--colorPrimary')).trim() || DEFAULT_CHAT_THEME.primary);
+}
+
+function loadDarkModePreference()
+{
+    try {
+        setDarkMode(window.localStorage.getItem(MESSENGER_DARKMODE_STORAGE_KEY) === '1');
+    } catch (error) {
+        setDarkMode(false);
+    }
 }
 
 function persistActiveConversation(conversationKey, options = {})
@@ -279,11 +354,54 @@ function readStoredConversation()
 
 function switchMessengerTab(tabName = 'dms')
 {
+    const safeTab = ['dms', 'groups', 'active'].includes(tabName) ? tabName : 'dms';
+
     messengerTabButtons.removeClass('active');
-    messengerTabButtons.filter(`[data-tab="${tabName}"]`).addClass('active');
+    messengerTabButtons.filter(`[data-tab="${safeTab}"]`).addClass('active');
 
     messengerTabPanes.removeClass('active');
-    $(`#tab-${tabName}`).addClass('active');
+    $(`#tab-${safeTab}`).addClass('active');
+
+    try {
+        window.localStorage.setItem(MESSENGER_TAB_STORAGE_KEY, safeTab);
+    } catch (error) {
+        // Ignore storage failures and keep the selected tab in memory.
+    }
+}
+
+function restoreMessengerTab()
+{
+    try {
+        switchMessengerTab(window.localStorage.getItem(MESSENGER_TAB_STORAGE_KEY) || 'dms');
+    } catch (error) {
+        switchMessengerTab('dms');
+    }
+}
+
+function setInfoPanelState(open = true)
+{
+    messengerApp.toggleClass('show_info', !!open);
+
+    try {
+        window.localStorage.setItem(MESSENGER_INFO_STORAGE_KEY, open ? '1' : '0');
+    } catch (error) {
+        // Ignore storage failures.
+    }
+}
+
+function restoreInfoPanelState()
+{
+    try {
+        const shouldShowInfo = window.localStorage.getItem(MESSENGER_INFO_STORAGE_KEY);
+
+        if (shouldShowInfo === null) {
+            return;
+        }
+
+        messengerApp.toggleClass('show_info', shouldShowInfo === '1');
+    } catch (error) {
+        // Ignore storage failures and keep the template default.
+    }
 }
 
 function updateSidebarBadges({ groupUnread = null, activeCount = null } = {})
@@ -299,9 +417,14 @@ function updateSidebarBadges({ groupUnread = null, activeCount = null } = {})
     }
 }
 
+function isCurrentUser(userId)
+{
+    return Number(userId) === Number(auth_id);
+}
+
 function countOnlineGroupMembers(memberIds = [])
 {
-    return memberIds.filter((id) => activeUsersMap.has(Number(id))).length;
+    return memberIds.filter((id) => !isCurrentUser(id) && activeUsersMap.has(Number(id))).length;
 }
 
 function refreshGroupOnlineState()
@@ -336,13 +459,15 @@ function renderActiveUsers(users = [])
         return;
     }
 
-    if (!users.length) {
+    const visibleUsers = users.filter((user) => !isCurrentUser(user?.id));
+
+    if (!visibleUsers.length) {
         messengerActiveBox.html("<p class='text text-muted text-center mt-5 no_active_contact'>No one is online right now.</p>");
         updateSidebarBadges({ activeCount: 0 });
         return;
     }
 
-    messengerActiveBox.html(users.map((user) => `
+    messengerActiveBox.html(visibleUsers.map((user) => `
         <div class="active-user-item" data-user-id="${user.id}">
             <div class="avatar-wrap">
                 <img src="${resolveAssetUrl(user.avatar || 'default/avatar.png')}" class="user-avatar" alt="${escapeHtml(user.name || 'User')}">
@@ -366,12 +491,12 @@ function renderActiveUsers(users = [])
         </div>
     `).join(''));
 
-    updateSidebarBadges({ activeCount: users.length });
+    updateSidebarBadges({ activeCount: visibleUsers.length });
 }
 
 function upsertActiveUser(user)
 {
-    if (!user?.id) {
+    if (!user?.id || isCurrentUser(user.id)) {
         return;
     }
 
@@ -389,6 +514,10 @@ function upsertActiveUser(user)
 
 function removeActiveUser(userId)
 {
+    if (isCurrentUser(userId)) {
+        return;
+    }
+
     activeUsersMap.delete(Number(userId));
     renderActiveUsers(Array.from(activeUsersMap.values()));
     refreshGroupOnlineState();
@@ -609,6 +738,31 @@ function toggleComposerState(className, active = false)
     composerShell.toggleClass(className, !!active);
 }
 
+function composerHasPendingMedia()
+{
+    return (attachmentInput[0]?.files?.length || 0) > 0
+        || !!voiceRecordingBlob
+        || !!voiceRecordingActive;
+}
+
+function composerHasDraft()
+{
+    return getComposerText().trim().length > 0 || composerHasPendingMedia() || !!composerReplyTarget;
+}
+
+function refreshComposerSurfaceState()
+{
+    toggleComposerState('has-draft', composerHasDraft());
+    window.requestAnimationFrame(() => {
+        adjustMessengerLayout();
+    });
+}
+
+function setComposerFocusState(active = false)
+{
+    toggleComposerState('is-focused', !!active);
+}
+
 function setVoiceRecordButtonState(active = false)
 {
     voiceRecordToggle.toggleClass('active', active);
@@ -642,7 +796,7 @@ function ensureComposerEmojiPicker()
 
     composerEmojiPicker = new Picker({
         data,
-        theme: 'light',
+        theme: $('body').hasClass('dark-mode') ? 'dark' : 'light',
         previewPosition: 'none',
         skinTonePosition: 'none',
         navPosition: 'bottom',
@@ -713,6 +867,7 @@ function insertEmojiIntoComposer(emoji)
 
     setComposerText(nextValue);
     queueTypingIndicator();
+    refreshComposerSurfaceState();
     focusComposer();
 }
 
@@ -915,6 +1070,7 @@ function setComposerSendingState(active = false)
     voiceRecordToggle.prop('disabled', active);
     attachmentInput.prop('disabled', active);
     messageForm.find('.message-send-button').prop('disabled', active);
+    refreshComposerSurfaceState();
 }
 
 function formatFileSize(bytes)
@@ -1463,6 +1619,7 @@ function renderAttachmentPreview()
     attachmentPreviewList.html(markup);
     attachmentPreviewBlock.removeClass('d-none');
     toggleComposerState('has-attachments', true);
+    refreshComposerSurfaceState();
 }
 
 function clearComposerAttachments()
@@ -1472,6 +1629,25 @@ function clearComposerAttachments()
     attachmentPreviewList.empty();
     attachmentPreviewBlock.addClass('d-none');
     toggleComposerState('has-attachments', false);
+    refreshComposerSurfaceState();
+}
+
+function setComposerAttachmentFiles(files = [])
+{
+    if (!attachmentInput[0] || typeof DataTransfer === 'undefined') {
+        return;
+    }
+
+    const transfer = new DataTransfer();
+
+    files.forEach((file) => {
+        if (file instanceof File) {
+            transfer.items.add(file);
+        }
+    });
+
+    attachmentInput[0].files = transfer.files;
+    renderAttachmentPreview();
 }
 
 function clearVoiceRecordingPreview()
@@ -1487,6 +1663,7 @@ function clearVoiceRecordingPreview()
     updateComposerVoiceStatus('', false);
     voiceRecordingDiscardRequested = false;
     toggleComposerState('has-voice-preview', false);
+    refreshComposerSurfaceState();
 }
 
 function setComposerReplyTarget(replyPreview)
@@ -1506,6 +1683,7 @@ function setComposerReplyTarget(replyPreview)
     composerReplyText.text(composerReplyTarget.snippet);
     composerReplyPreview.removeClass('d-none');
     toggleComposerState('has-reply-preview', true);
+    refreshComposerSurfaceState();
 }
 
 function clearComposerReplyTarget()
@@ -1520,6 +1698,7 @@ function clearComposerReplyTarget()
     composerReplyText.text('');
     composerReplyPreview.addClass('d-none');
     toggleComposerState('has-reply-preview', false);
+    refreshComposerSurfaceState();
 }
 
 function resetVoiceRecordingState()
@@ -1544,6 +1723,7 @@ function resetVoiceRecordingState()
     toggleComposerState('is-recording', false);
     setVoiceRecordButtonState(false);
     updateComposerVoiceStatus('', false);
+    refreshComposerSurfaceState();
 
     if (voiceRecordingStopResolver) {
         voiceRecordingStopResolver();
@@ -1587,6 +1767,7 @@ function finishComposerSend({ clearText = true } = {})
     window.clearTimeout(typingPingTimer);
     sendTypingState(false);
     scrolllToBottom(messageBoxContainer);
+    refreshComposerSurfaceState();
     focusComposer();
 }
 
@@ -1681,6 +1862,7 @@ async function startVoiceRecording()
             setVoiceRecordButtonState(false);
             updateComposerVoiceStatus('', false);
             voiceRecordingDiscardRequested = false;
+            refreshComposerSurfaceState();
 
             if (voiceRecordingLimitReached) {
                 notyf.info('Voice note reached the 2 minute limit and stopped automatically.');
@@ -1910,10 +2092,18 @@ async function sendMessage()
     }
 
     const inputValue = maybeApplyComposerEmojiShortcuts();
-    const hasAttachment = (attachmentInput[0]?.files?.length || 0) > 0;
+    const attachmentFiles = Array.from(attachmentInput[0]?.files || []);
+    const hasAttachment = attachmentFiles.length > 0;
     const hasVoiceCandidate = !!voiceRecordingBlob || voiceRecordingActive;
+    const conversationKey = getConversationKey();
+    const directUserId = getMessengerId();
 
     if (inputValue.trim().length <= 0 && !hasAttachment && !hasVoiceCandidate) {
+        return;
+    }
+
+    if (!conversationKey && !directUserId) {
+        notyf.error('Select a conversation before sending a message.');
         return;
     }
 
@@ -1934,8 +2124,6 @@ async function sendMessage()
         temporaryMsgId += 1;
         let tempID = `temp_${temporaryMsgId}`; //temp_1, temp_2 ....
         const formData = new FormData(messageForm[0]);
-        const conversationKey = getConversationKey();
-        const directUserId = getMessengerId();
 
         if (conversationKey) {
             formData.append('conversation_key', conversationKey);
@@ -1972,17 +2160,13 @@ async function sendMessage()
             beforeSend: function () {
                 setComposerSendingState(true);
                 //Add temp message on dom
-                if (hasAttachment || hasVoiceMessage) {
-                    messageBoxContainer.append(
-                        sendTempMessageCard(
-                            inputValue.trim().length > 0 ? inputValue : (hasVoiceMessage ? 'Voice note' : ''),
-                            tempID,
-                            true
-                        )
-                    );
-                } else {
-                    messageBoxContainer.append(sendTempMessageCard(inputValue, tempID));
-                }
+                messageBoxContainer.append(sendTempMessageCard({
+                    text: inputValue,
+                    tempId: tempID,
+                    attachments: attachmentFiles,
+                    hasVoiceMessage,
+                    voiceDurationSeconds: Number(voiceRecordingDurationSeconds || 0),
+                }));
 
                 $('.no_messages').addClass('d-none');
 
@@ -2157,37 +2341,47 @@ function deleteMessage(message_id)
  * | temporary message card for a chat interface.|
  *  ---------------------------------------------
 */
-function sendTempMessageCard(message, tempId, attachemnt = false) 
+function sendTempMessageCard(payload, legacyTempId = '', legacyAttachment = false) 
 {
-    const safeMessage = escapeHtml(message);
+    const normalizedPayload = typeof payload === 'object' && payload !== null
+        ? payload
+        : {
+            text: payload,
+            tempId: legacyTempId,
+            attachments: legacyAttachment ? Array.from(attachmentInput[0]?.files || []) : [],
+            hasVoiceMessage: false,
+            voiceDurationSeconds: 0,
+        };
 
-    if (attachemnt) {
-        return `
-                    <div class="wsus__single_chat_area message-card" data-id="${tempId}">
-                        <div class="wsus__single_chat chat_right">
-                            <div class="pre_loader">
-                                <div class="spinner-border text-light" role="status">
-                                    <span class="visually-hidden">Loading...</span>
-                                </div>
-                            </div>
-                            
-                            ${safeMessage.trim().length > 0 ? `<p class="messages">${safeMessage}</p>` : ''}
+    const safeMessage = escapeHtml(String(normalizedPayload.text || '').trim());
+    const tempId = String(normalizedPayload.tempId || legacyTempId || `temp_${Date.now()}`);
+    const attachments = Array.isArray(normalizedPayload.attachments) ? normalizedPayload.attachments : [];
+    const hasVoiceMessage = !!normalizedPayload.hasVoiceMessage;
+    const attachmentCount = attachments.length;
+    const attachmentSummary = attachmentCount > 0
+        ? `${attachmentCount} ${attachmentCount === 1 ? formatAttachmentTypeLabel(guessAttachmentTypeFromFile(attachments[0])) : 'attachments'}`
+        : '';
+    const voiceSummary = hasVoiceMessage
+        ? `Voice note${normalizedPayload.voiceDurationSeconds ? ` · ${formatDurationSeconds(normalizedPayload.voiceDurationSeconds)}` : ''}`
+        : '';
+    const summaryChips = [voiceSummary, attachmentSummary].filter(Boolean).map((label) => `
+        <span class="message-temp-chip">${escapeHtml(label)}</span>
+    `).join('');
 
-                            <span class="clock"><i class="fas fa-clock"></i> sending</span>
-                        </div>
+    return `
+        <div class="wsus__single_chat_area message-card" data-id="${tempId}">
+            <div class="wsus__single_chat chat_right">
+                <div class="pre_loader">
+                    <div class="spinner-border text-light" role="status">
+                        <span class="visually-hidden">Loading...</span>
                     </div>
-                `;
-
-    } else {
-        return `
-                    <div class="wsus__single_chat_area message-card" data-id="${tempId}">
-                        <div class="wsus__single_chat chat_right">
-                            <p class="messages">${safeMessage}</p>
-                            <span class="clock"><i class="fas fa-clock"></i> sending</span>
-                        </div>
-                    </div>
-                `;
-    }
+                </div>
+                ${safeMessage ? `<p class="messages">${safeMessage}</p>` : ''}
+                ${summaryChips ? `<div class="message-temp-chips">${summaryChips}</div>` : ''}
+                <span class="clock"><i class="fas fa-clock"></i> sending</span>
+            </div>
+        </div>
+    `;
 
 }//End Method
 
@@ -2226,15 +2420,17 @@ function messageFormReset()
     setComposerText('');
     toggleComposerEmojiPopover(false);
     setToneIndicator('');
+    refreshComposerSurfaceState();
 
 }//End Method
 
 function setHeaderConversationActions(type = 'user')
 {
     const isDirect = type === 'user';
+    const isSelfConversation = isDirect && Number(getMessengerId()) === Number(auth_id);
 
-    $('.favourite').toggleClass('d-none', !isDirect);
-    $('.start-call').toggleClass('d-none', !isDirect);
+    $('.favourite').toggleClass('d-none', !isDirect || isSelfConversation);
+    $('.start-call').toggleClass('d-none', !isDirect || isSelfConversation);
 }
 
 function renderConversationMembers(members = [])
@@ -2283,6 +2479,7 @@ function setActiveConversation(conversationKey, options = {})
         userId,
         groupId: type === 'group' ? Number(options.groupId || conversationKey.split(':')[1] || 0) : 0,
     });
+    applyThemeForConversation(conversationKey);
     switchMessengerTab(type === 'group' ? 'groups' : 'dms');
     updateSelectedContent(conversationKey);
     setHeaderConversationActions(type);
@@ -2808,7 +3005,8 @@ function star(user_id)
 */
 function makeSeen(status)
 {
-    $(`.messenger-list-item[data-conversation-key="${getConversationKey()}"]`).find('.unseen_count').remove();
+    $(`.messenger-list-item[data-conversation-key="${getConversationKey()}"]`).find('.unseen_count, .group-card__badge').remove();
+    refreshSidebarBadgeCountsFromDom();
     $.ajax({
         method: 'POST',
         url: route('messenger.make-seen'),
@@ -2841,7 +3039,30 @@ function initVenobox()
 function playNotficationSound()
 {
     const sound = new Audio(resolveAssetUrl('default/message-sound.mp3'));
-    sound.play();
+    const playPromise = sound.play();
+
+    if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch(() => {});
+    }
+}
+
+function adjustMessengerLayout()
+{
+    const windowHeight = $(window).height();
+    const chatAreaHeight = $('.wsus__chat_area').innerHeight() || windowHeight;
+    const headerHeight = $('.wsus__chat_area_header:visible').outerHeight(true) || 0;
+    const searchPanelHeight = $('.conversation-search-panel:visible').outerHeight(true) || 0;
+    const footerHeight = $('.wsus__chat_area_footer:visible').outerHeight(true) || 0;
+    const chatBodyHeight = Math.max(220, chatAreaHeight - headerHeight - searchPanelHeight - footerHeight);
+
+    $('.wsus__chat_area_body').css('height', `${chatBodyHeight}px`);
+    $('.messenger-contacts').css('max-height', `${Math.max(180, windowHeight - 393)}px`);
+    $('.messenger-groups').css('max-height', `${Math.max(180, windowHeight - 260)}px`);
+    $('.messenger-active-users').css('max-height', `${Math.max(180, windowHeight - 260)}px`);
+    $('.wsus__chat_info_gallery').css('height', `${Math.max(160, windowHeight - 400)}px`);
+    $('.user_search_list_result').css({
+        'height': `${Math.max(220, windowHeight - 130)}px`,
+    });
 }
 
 /**
@@ -2938,7 +3159,7 @@ function updateUserActiveList()
     $('.messenger-list-item').each(function(index, value){
         let id = $(this).data('userId');
 
-        if(id && activeUsersIds.includes(+id)) userActive(id);
+        if(id && !isCurrentUser(id) && activeUsersIds.includes(+id)) userActive(id);
 
     });
 
@@ -2952,6 +3173,10 @@ function updateUserActiveList()
 */
 function userActive(id)
 {
+    if (isCurrentUser(id)) {
+        return;
+    }
+
     let contactItem = $(`.messenger-list-item[data-user-id="${id}"]`).find('.img').find('span');
     contactItem.removeClass('inactive');
     contactItem.addClass('active');
@@ -2966,6 +3191,10 @@ function userActive(id)
 */
 function userInactive(id)
 {
+    if (isCurrentUser(id)) {
+        return;
+    }
+
     let contactItem = $(`.messenger-list-item[data-user-id="${id}"]`).find('.img').find('span');
     contactItem.removeClass('active');
     contactItem.addClass('inactive');
@@ -2982,7 +3211,7 @@ function setActiveUsersIds(users)
     $.each(users, function(index, user){
         const numericId = Number(user.id);
 
-        if (!activeUsersIds.includes(numericId)) {
+        if (!isCurrentUser(numericId) && !activeUsersIds.includes(numericId)) {
             activeUsersIds.push(numericId);
         }
     });
@@ -2999,7 +3228,7 @@ function addNewUserId(id)
 {
     const numericId = Number(id);
 
-    if (!activeUsersIds.includes(numericId)) {
+    if (!isCurrentUser(numericId) && !activeUsersIds.includes(numericId)) {
         activeUsersIds.push(numericId);
     }
 
@@ -3013,6 +3242,10 @@ function addNewUserId(id)
 */
 function removeUserId(id)
 {
+    if (isCurrentUser(id)) {
+        return;
+    }
+
     let index = activeUsersIds.indexOf(Number(id));
 
     if(index !== -1){
@@ -3051,13 +3284,17 @@ window.addEventListener('message', (event) => {
 */
 $(document).ready(function () 
 {   
+    loadDarkModePreference();
     loadStoredChatTheme();
+    restoreMessengerTab();
+    restoreInfoPanelState();
     getContacts();;
     initializeCallManager();
     setHeaderConversationActions('group');
     hideTypingIndicator();
     openConversationFromQuery();
     restoreLastConversationSelection();
+    refreshComposerSurfaceState();
 
     /**
      *  -------------------------------------------
@@ -3093,6 +3330,23 @@ $(document).ready(function ()
 
     messengerTabButtons.on('click', function () {
         switchMessengerTab(String($(this).data('tab') || 'dms'));
+    });
+
+    darkModeToggle.on('click', function (e) {
+        e.preventDefault();
+        setDarkMode(!$('body').hasClass('dark-mode'));
+    });
+
+    $('.info').on('click', function () {
+        window.setTimeout(() => {
+            setInfoPanelState(messengerApp.hasClass('show_info'));
+        }, 0);
+    });
+
+    $('.user_info_close').on('click', function () {
+        window.setTimeout(() => {
+            setInfoPanelState(messengerApp.hasClass('show_info'));
+        }, 0);
     });
 
     $('#select_file').change(function () {
@@ -3250,13 +3504,35 @@ $(document).ready(function ()
     messageInput.on('input', function () {
         queueTypingIndicator();
         refreshMessageTone();
+        refreshComposerSurfaceState();
     });
     $('body').on('input keyup', '.emojionearea-editor', function () {
         queueTypingIndicator();
         refreshMessageTone();
+        refreshComposerSurfaceState();
     });
     messageInput.on('keyup', maybeApplyComposerEmojiShortcuts);
     $('body').on('keyup', '.emojionearea-editor', maybeApplyComposerEmojiShortcuts);
+    messageInput.on('focus', function () {
+        setComposerFocusState(true);
+    });
+    messageInput.on('blur', function () {
+        window.setTimeout(() => {
+            if (!$('.emojionearea-editor:focus').length) {
+                setComposerFocusState(false);
+            }
+        }, 0);
+    });
+    $('body').on('focus', '.emojionearea-editor', function () {
+        setComposerFocusState(true);
+    });
+    $('body').on('blur', '.emojionearea-editor', function () {
+        window.setTimeout(() => {
+            if (!$('.emojionearea-editor:focus').length && document.activeElement !== messageInput.get(0)) {
+                setComposerFocusState(false);
+            }
+        }, 0);
+    });
     window.visualViewport?.addEventListener('resize', positionComposerEmojiPopover);
     $(window).on('resize', positionComposerEmojiPopover);
 
@@ -3267,7 +3543,43 @@ $(document).ready(function ()
     */
     $(".attachment-input").change(function () {
         renderAttachmentPreview();
+        refreshComposerSurfaceState();
 
+    });
+
+    ['dragenter', 'dragover'].forEach((eventName) => {
+        composerShell.on(eventName, function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleComposerState('is-dragover', true);
+            setComposerFocusState(true);
+        });
+    });
+
+    ['dragleave', 'dragend'].forEach((eventName) => {
+        composerShell.on(eventName, function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            if (e.currentTarget === e.target) {
+                toggleComposerState('is-dragover', false);
+            }
+        });
+    });
+
+    composerShell.on('drop', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleComposerState('is-dragover', false);
+
+        const droppedFiles = Array.from(e.originalEvent?.dataTransfer?.files || []);
+
+        if (!droppedFiles.length) {
+            return;
+        }
+
+        setComposerAttachmentFiles(droppedFiles);
+        notyf.success(`${droppedFiles.length} ${droppedFiles.length === 1 ? 'file is' : 'files are'} ready to send.`);
     });
 
     voiceRecordToggle.on('click', function (e) {
@@ -3351,6 +3663,9 @@ $(document).ready(function ()
 
         conversationSearchPanel.toggleClass('d-none', !shouldShow);
         conversationSearchResults.addClass('d-none').empty();
+        window.requestAnimationFrame(() => {
+            adjustMessengerLayout();
+        });
 
         if (shouldShow) {
             conversationSearchInput.trigger('focus');
@@ -3362,6 +3677,9 @@ $(document).ready(function ()
         conversationSearchPanel.addClass('d-none');
         conversationSearchInput.val('');
         conversationSearchResults.addClass('d-none').empty();
+        window.requestAnimationFrame(() => {
+            adjustMessengerLayout();
+        });
     });
 
     conversationSearchInput.on('input', debounce(function () {
@@ -3452,7 +3770,8 @@ $(document).ready(function ()
         e.preventDefault();
         saveChatTheme(
             String($(this).data('chatThemeColor') || '#2180f3'),
-            String($(this).data('chatThemeLight') || '#ecf5ff')
+            String($(this).data('chatThemeLight') || '#ecf5ff'),
+            getConversationKey()
         );
     });
 
@@ -3501,29 +3820,11 @@ $(document).ready(function ()
    });
 
     /**
-     *  --------------------------
-     * | Custom Height adjustment |
-     *  --------------------------
-    */
-    function adjustHeight() 
-    {
-        var windowHeight = $(window).height();
-        $('.wsus__chat_area_body').css('height', (windowHeight-120) + 'px');
-        $('.messenger-contacts').css('max-height', (windowHeight - 393) + 'px');
-        $('.messenger-groups').css('max-height', (windowHeight - 260) + 'px');
-        $('.messenger-active-users').css('max-height', (windowHeight - 260) + 'px');
-        $('.wsus__chat_info_gallery').css('height', (windowHeight - 400) + 'px');
-        $('.user_search_list_result').css({
-            'height': (windowHeight - 130) + 'px',
-        }); 
-    }
-
-    /**
      *  -----------------------------
      * | Window load event listener. |
      *  -----------------------------
     */
-    adjustHeight();
+    adjustMessengerLayout();
 
     /** 
      *  --------------------------------
@@ -3531,7 +3832,7 @@ $(document).ready(function ()
      *  --------------------------------
     */
     $(window).resize(function () {
-        adjustHeight();
+        adjustMessengerLayout();
     });
 
 });//End Method

@@ -253,7 +253,7 @@
         @endif
 
         @if (! $message->isCallMessage())
-            <span class="time">{{ timeAgo($message->created_at) }}</span>
+            <span class="time {{ $isMine && ! $message->isGroupMessage() ? 'message-time--outgoing' : '' }} {{ $message->seen ? 'message-time--seen' : '' }}">{{ timeAgo($message->created_at) }}</span>
         @else
             <span class="time">
                 {{ timeAgo($message->created_at) }}
